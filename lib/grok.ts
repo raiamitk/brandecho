@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  Claude (Anthropic) API integration
+//  Claude (Anthropic) API integration — optimized for token efficiency
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
@@ -28,7 +28,6 @@ async function claudeChat(systemPrompt: string, userPrompt: string): Promise<str
 
   const data = await res.json();
   const text = data.content[0].text.trim();
-  // Strip markdown code blocks if Claude wraps response in ```json ... ```
   return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
 }
 
@@ -38,14 +37,7 @@ export async function discoverBrandInfo(brandName: string, domain?: string) {
   const raw = await claudeChat(
     "You are a precise brand intelligence analyst. Always return valid JSON only. No markdown, no explanation.",
     `For the brand "${brandName}"${domain ? ` (website: ${domain})` : ""}, return this JSON:
-{
-  "domain": "official website domain",
-  "industry": "specific industry category",
-  "description": "2-sentence brand description",
-  "primary_products": ["product1", "product2"],
-  "target_market": "brief target market description",
-  "brand_tone": "professional/casual/luxury/budget/etc"
-}`
+{"domain":"official website domain","industry":"specific industry category","description":"2-sentence brand description","primary_products":["product1"],"target_market":"brief target market","brand_tone":"professional/casual/luxury/budget"}`
   );
   return JSON.parse(raw);
 }
@@ -56,49 +48,44 @@ export async function discoverCompetitors(brandName: string, industry: string) {
   const raw = await claudeChat(
     "You are a competitive intelligence analyst. Always return valid JSON array only. No markdown.",
     `For "${brandName}" in "${industry}", identify 6 competitors (3 direct, 3 category substitutes).
-Return JSON array:
-[{"name":"","domain":"","type":"direct|category_substitute","why":"one sentence"}]`
+Return JSON array: [{"name":"","domain":"","type":"direct|category_substitute","why":"one sentence"}]`
   );
   return JSON.parse(raw);
 }
 
-// ── Persona Generation ───────────────────────────────────────────────────────
+// ── Persona + Queries — ONE combined API call (biggest token saver) ───────────
 
-export async function generatePersonas(brandName: string, industry: string, description: string) {
-  const raw = await claudeChat(
-    "You are a user research expert. Always return valid JSON array only. No markdown.",
-    `For the brand "${brandName}" (${description}), generate 3 maximally diverse user personas.
-Return JSON array:
-[{
-  "name": "The [Archetype Name]",
-  "archetype": "short label",
-  "age_range": "e.g. 22-30",
-  "occupation": "job/life stage",
-  "pain_points": ["pain1","pain2","pain3"],
-  "goals": ["goal1","goal2"],
-  "ai_tools_used": ["ChatGPT","Perplexity"],
-  "query_style": "how they phrase AI questions",
-  "income_level": "budget/mid/premium",
-  "discovery_channel": "how they find brands"
-}]`
-  );
-  return JSON.parse(raw);
-}
-
-// ── Query Generation ─────────────────────────────────────────────────────────
-
-export async function generateQueriesForPersona(
+export async function generatePersonasAndQueries(
   brandName: string,
-  persona: { name: string; archetype: string; pain_points: string[]; query_style: string },
-  industry: string
+  industry: string,
+  description: string
 ) {
   const raw = await claudeChat(
-    "You are an SEO and AEO query research expert. Always return valid JSON array only. No markdown.",
-    `Generate 25 search queries "${persona.name}" (${persona.archetype}) would use to find "${brandName}" (${industry}).
-Mix: 10 AEO (conversational AI), 8 GEO (local intent), 7 SEO long-tail.
-Query style: "${persona.query_style}"
-Return JSON array:
-[{"text":"","type":"aeo|geo|seo_longtail","intent":"awareness|consideration|purchase|comparison","revenue_proximity":0-100}]`
+    "You are a user research and SEO expert. Always return valid JSON only. No markdown.",
+    `For "${brandName}" (${description}, ${industry}):
+1. Generate 3 diverse user personas
+2. For each persona, generate 5 targeted queries (mix of AEO, GEO, SEO)
+
+Return a single JSON object:
+{
+  "personas": [
+    {
+      "name": "The [Archetype]",
+      "archetype": "label",
+      "age_range": "22-30",
+      "occupation": "job",
+      "pain_points": ["p1","p2"],
+      "goals": ["g1"],
+      "ai_tools_used": ["ChatGPT"],
+      "query_style": "casual/formal/voice",
+      "income_level": "budget/mid/premium",
+      "discovery_channel": "how they find brands",
+      "queries": [
+        {"text":"query text","type":"aeo|geo|seo_longtail","intent":"awareness|consideration|purchase|comparison","revenue_proximity":50}
+      ]
+    }
+  ]
+}`
   );
   return JSON.parse(raw);
 }
@@ -113,17 +100,9 @@ export async function generateRecommendations(
 ) {
   const raw = await claudeChat(
     "You are an SEO/AEO strategy consultant. Always return valid JSON array only. No markdown.",
-    `For "${brandName}" in ${industry}, give 5 prioritized recommendations to improve AEO + SEO visibility.
-Context: ${queryCount} queries identified, competitors: ${competitors.join(", ")}.
-Return JSON array:
-[{
-  "title": "short action title",
-  "description": "2-sentence why and what",
-  "category": "aeo|seo|content|technical",
-  "priority": "high|medium|low",
-  "projected_lift": "e.g. +20% AI citation rate",
-  "action_label": "short button text"
-}]`
+    `For "${brandName}" in ${industry}, give 5 prioritized AEO+SEO recommendations.
+Competitors: ${competitors.join(", ")}. Queries analysed: ${queryCount}.
+Return JSON array: [{"title":"","description":"2 sentences","category":"aeo|seo|content|technical","priority":"high|medium|low","projected_lift":"e.g. +20%","action_label":"button text"}]`
   );
   return JSON.parse(raw);
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Users, MessageSquare, Building2, ArrowRight, Zap, Globe, Bot } from "lucide-react";
+import { TrendingUp, Users, MessageSquare, Building2, ArrowRight, Zap, Globe, Bot, Download } from "lucide-react";
 import SmartRecommendationsPanel from "@/components/SmartRecommendationsPanel";
 import type { Brand, Persona, Query, Competitor, Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
@@ -51,6 +51,23 @@ export default function DashboardPage() {
   const seoQueries = queries.filter(q => q.type === "seo_longtail");
   const highRevQueries = queries.filter(q => q.revenue_proximity >= 70);
 
+  const downloadCSV = () => {
+    const rows = [
+      ["Query", "Type", "Intent", "Revenue Proximity (%)"],
+      ...queries.map(q => [q.text, q.type, q.intent, q.revenue_proximity]),
+      [], ["Competitor", "Domain", "Type"],
+      ...competitors.map(c => [c.name, c.domain, c.type]),
+      [], ["Recommendation", "Category", "Priority", "Projected Lift"],
+      ...recs.map(r => [r.title, r.category, r.priority, r.projected_lift]),
+    ];
+    const csv = rows.map(r => r.map(String).map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `${brand?.name || "brandecho"}-report.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 flex">
 
@@ -68,6 +85,12 @@ export default function DashboardPage() {
               <span className="text-slate-500 text-sm ml-2">{brand?.industry}</span>
             </div>
           </div>
+          <button
+              onClick={downloadCSV}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600 text-white text-sm font-medium transition-colors mr-2"
+            >
+              <Download className="w-4 h-4" /> Download Report
+            </button>
           <nav className="flex items-center gap-1">
             {[
               { label: "Overview",    href: "/dashboard" },
