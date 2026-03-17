@@ -55,10 +55,11 @@ export async function POST(req: NextRequest) {
 
         // ── STEP 5: Queries ──────────────────────────────────────────────
         stepUpdate("queries", "running", "Generating 75+ AEO/GEO/SEO queries...");
-        const allQueries: object[] = [];
+        type QueryItem = { text: string; type: string; intent: string; revenue_proximity: number; persona_name: string };
+        const allQueries: QueryItem[] = [];
         for (const persona of personaData) {
           const pQueries = await generateQueriesForPersona(brand_name, persona, brandInfo.industry);
-          allQueries.push(...pQueries.map((q: object) => ({ ...q, persona_name: persona.name })));
+          allQueries.push(...pQueries.map((q: Omit<QueryItem, "persona_name">) => ({ ...q, persona_name: persona.name })));
         }
         stepUpdate("queries", "done", `Generated ${allQueries.length} queries`);
 
