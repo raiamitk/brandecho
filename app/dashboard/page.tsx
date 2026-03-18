@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Users, MessageSquare, Building2, ArrowRight, Globe, Bot, Download, FileText } from "lucide-react";
+import { TrendingUp, Users, MessageSquare, Building2, ArrowRight, Globe, Bot, Download, FileText, Eye, BarChart2, Sparkles } from "lucide-react";
 import SmartRecommendationsPanel from "@/components/SmartRecommendationsPanel";
 import type { Brand, Persona, Query, Competitor, Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
@@ -258,6 +258,70 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* ── Phase 2 Feature Cards ─────────────────────────────────────── */}
+          <section>
+            <h2 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" style={{ color: A }} /> Advanced Intelligence
+            </h2>
+            <div className="grid grid-cols-3 gap-4">
+
+              {/* AI Visibility Checker */}
+              <button onClick={() => router.push("/visibility")}
+                className="rounded-2xl border p-6 text-left group transition-all hover:scale-[1.02]"
+                style={{ background: SURF, borderColor: BORD }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = A; e.currentTarget.style.background = "rgba(0,255,150,0.05)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = BORD; e.currentTarget.style.background = SURF; }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "rgba(0,255,150,0.1)" }}>
+                  <Eye className="w-5 h-5" style={{ color: A }} />
+                </div>
+                <h3 className="font-semibold text-white text-sm mb-2">AI Visibility Checker</h3>
+                <p className="text-xs leading-relaxed" style={{ color: "#666" }}>
+                  Score each query 0–100 for AI citability. Claude prediction + Gemini live check + web authority signals.
+                </p>
+                <div className="flex items-center gap-1.5 mt-4 text-xs font-medium" style={{ color: A }}>
+                  Run analysis <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+
+              {/* Content Brief Generator */}
+              <button onClick={() => router.push("/briefs")}
+                className="rounded-2xl border p-6 text-left group transition-all hover:scale-[1.02]"
+                style={{ background: SURF, borderColor: BORD }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "#fbbf24"; e.currentTarget.style.background = "rgba(251,191,36,0.04)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = BORD; e.currentTarget.style.background = SURF; }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "rgba(251,191,36,0.1)" }}>
+                  <Sparkles className="w-5 h-5" style={{ color: "#fbbf24" }} />
+                </div>
+                <h3 className="font-semibold text-white text-sm mb-2">Content Brief Generator</h3>
+                <p className="text-xs leading-relaxed" style={{ color: "#666" }}>
+                  Auto-generate structured briefs for top 5 revenue queries — titles, H2s, key points, and AI citation hooks.
+                </p>
+                <div className="flex items-center gap-1.5 mt-4 text-xs font-medium" style={{ color: "#fbbf24" }}>
+                  Generate briefs <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+
+              {/* Competitor Gap Analysis */}
+              <button onClick={() => router.push("/competitors")}
+                className="rounded-2xl border p-6 text-left group transition-all hover:scale-[1.02]"
+                style={{ background: SURF, borderColor: BORD }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "#f87171"; e.currentTarget.style.background = "rgba(248,113,113,0.04)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = BORD; e.currentTarget.style.background = SURF; }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "rgba(248,113,113,0.1)" }}>
+                  <BarChart2 className="w-5 h-5" style={{ color: "#f87171" }} />
+                </div>
+                <h3 className="font-semibold text-white text-sm mb-2">Competitor Gap Analysis</h3>
+                <p className="text-xs leading-relaxed" style={{ color: "#666" }}>
+                  Visual heatmap showing which queries competitors appear in that you don't — with specific fixes.
+                </p>
+                <div className="flex items-center gap-1.5 mt-4 text-xs font-medium" style={{ color: "#f87171" }}>
+                  View gaps <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+
             </div>
           </section>
         </main>

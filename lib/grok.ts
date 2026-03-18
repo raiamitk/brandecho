@@ -90,6 +90,116 @@ Return a single JSON object:
   return JSON.parse(raw);
 }
 
+// ── AI Visibility Scoring — ONE batched Claude call for all queries ───────────
+
+export async function scoreQueryVisibility(
+  brandName: string,
+  industry: string,
+  queries: { id: string; text: string; type: string }[]
+): Promise<Record<string, { claude_score: number; web_score: number; reason: string }>> {
+  const queryList = queries.map((q, i) => `${i + 1}. [${q.id}] ${q.text}`).join("\n");
+  const raw = await claudeChat(
+    "You are an AEO (AI Engine Optimization) expert. Always return valid JSON only. No markdown.",
+    `Brand: "${brandName}" | Industry: "${industry}"
+
+For each query below, score how likely "${brandName}" would be mentioned by AI engines (ChatGPT, Perplexity, Gemini) if a user asked that exact query. Also score the brand's web authority signals for that query.
+
+Queries:
+${queryList}
+
+Return JSON object keyed by the query ID string:
+{
+  "uuid-here": {
+    "claude_score": 0-100,
+    "web_score": 0-100,
+    "reason": "one sentence why"
+  }
+}
+
+Scoring guide:
+- claude_score: probability AI engines cite this brand for this query (0=never, 100=always)
+- web_score: strength of brand's web presence for this query (backlinks, reviews, directories)
+- Be realistic. New/unknown brands score 10-30. Category leaders score 60-85.`
+  );
+  return JSON.parse(raw);
+}
+
+// ── Content Brief Generator ───────────────────────────────────────────────────
+
+export async function generateContentBriefs(
+  brandName: string,
+  industry: string,
+  queries: { id: string; text: string; intent: string; type: string; revenue_proximity: number }[]
+) {
+  const topQueries = [...queries].sort((a, b) => b.revenue_proximity - a.revenue_proximity).slice(0, 5);
+  const queryList = topQueries.map((q, i) => `${i + 1}. [${q.id}] "${q.text}" (intent: ${q.intent}, type: ${q.type})`).join("\n");
+
+  const raw = await claudeChat(
+    "You are a content strategist specialising in AEO and AI-citation optimisation. Always return valid JSON only. No markdown.",
+    `Brand: "${brandName}" | Industry: "${industry}"
+
+Generate a detailed content brief for each query that, if published, would maximise the chance of AI engines citing "${brandName}" in responses.
+
+Queries:
+${queryList}
+
+Return JSON array:
+[
+  {
+    "query_id": "uuid",
+    "query_text": "...",
+    "recommended_title": "SEO/AEO optimised title",
+    "content_type": "blog|faq|comparison|guide|case_study",
+    "word_count": 1200,
+    "h2_sections": ["H2 heading 1", "H2 heading 2", "H2 heading 3", "H2 heading 4"],
+    "key_points": ["key point to include 1", "key point 2", "key point 3"],
+    "citation_hook": "Why AI engines would cite this: one sentence",
+    "schema_markup": "Article|FAQPage|HowTo",
+    "estimated_impact": "high|medium|low"
+  }
+]`
+  );
+  return JSON.parse(raw);
+}
+
+// ── Competitor Gap Analysis ───────────────────────────────────────────────────
+
+export async function analyzeCompetitorGaps(
+  brandName: string,
+  competitors: { name: string; type: string }[],
+  queries: { id: string; text: string; type: string; intent: string }[]
+) {
+  const compList = competitors.slice(0, 4).map(c => c.name).join(", ");
+  const queryList = queries.slice(0, 15).map((q, i) => `${i + 1}. [${q.id}] ${q.text}`).join("\n");
+
+  const raw = await claudeChat(
+    "You are a competitive intelligence analyst for AEO/SEO. Always return valid JSON only. No markdown.",
+    `Brand: "${brandName}" | Competitors: ${compList}
+
+For each query, estimate which brands (including "${brandName}") would likely appear in AI engine responses. Be realistic — smaller brands rarely appear for competitive queries.
+
+Queries:
+${queryList}
+
+Return JSON array:
+[
+  {
+    "query_id": "uuid",
+    "brand_appears": true|false,
+    "competitors_appear": ["CompetitorName1", "CompetitorName2"],
+    "gap_type": "missing|weak|strong",
+    "opportunity": "one sentence: what ${brandName} should do to appear for this query"
+  }
+]
+
+gap_type guide:
+- strong: brand appears, competitors don't
+- weak: brand appears but competitors appear more prominently
+- missing: brand doesn't appear but competitors do (this is a gap to fix)`
+  );
+  return JSON.parse(raw);
+}
+
 // ── Smart Recommendations ────────────────────────────────────────────────────
 
 export async function generateRecommendations(
