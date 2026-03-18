@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 152">
+  <!-- Speech bubble shape: square top-left, chamfered top-right & bottom-right, tail bottom-left -->
+  <polygon
+    points="0,0 510,0 540,30 540,112 510,142 70,142 16,152 40,142 0,142"
+    fill="#00FF96"
+  />
+  <!-- BRANDECHO bold text -->
+  <text
+    x="274"
+    y="106"
+    text-anchor="middle"
+    font-family="'Arial Black', 'Arial Bold', Impact, Arial, sans-serif"
+    font-weight="900"
+    font-size="72"
+    letter-spacing="1"
+    fill="#141414"
+  >BRANDECHO</text>
+</svg>

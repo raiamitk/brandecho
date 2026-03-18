@@ -11,12 +11,12 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50:  "#eff6ff",
-          100: "#dbeafe",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
-          900: "#1e3a8a",
+          bg:      "#141414",  // main background
+          surface: "#1c1c1c",  // cards/panels
+          border:  "#2a2a2a",  // borders
+          accent:  "#00FF96",  // primary accent (neon green)
+          "accent-dim": "#00cc78", // darker accent for hover
+          muted:   "#888888",  // muted text
         },
       },
       animation: {

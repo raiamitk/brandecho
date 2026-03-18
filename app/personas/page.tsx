@@ -7,6 +7,11 @@ import SmartRecommendationsPanel from "@/components/SmartRecommendationsPanel";
 import type { Persona, Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 
+const A    = "#00FF96";
+const BG   = "#141414";
+const SURF = "#1c1c1c";
+const BORD = "#2a2a2a";
+
 export default function PersonasPage() {
   const router = useRouter();
   const [personas,  setPersonas]  = useState<Persona[]>([]);
@@ -36,58 +41,77 @@ export default function PersonasPage() {
   const active = personas.find(p => p.id === selected);
 
   if (loading) {
-    return <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-    </div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: BG }}>
+        <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: A, borderTopColor: "transparent" }} />
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex">
+    <div className="min-h-screen flex" style={{ background: BG }}>
       <div className="flex-1 pr-80">
 
         {/* Nav */}
-        <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur-sm border-b border-slate-800 px-6 py-4 flex items-center gap-4">
-          <button onClick={() => router.push("/dashboard")} className="text-slate-400 hover:text-white flex items-center gap-1.5 text-sm">
+        <header
+          className="sticky top-0 z-30 backdrop-blur-sm border-b px-6 py-4 flex items-center gap-4"
+          style={{ background: "rgba(20,20,20,0.85)", borderColor: BORD }}
+        >
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="flex items-center gap-1.5 text-sm transition-colors"
+            style={{ color: "#888" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "#fff")}
+            onMouseLeave={e => (e.currentTarget.style.color = "#888")}
+          >
             <ChevronLeft className="w-4 h-4" /> Dashboard
           </button>
-          <div className="h-4 w-px bg-slate-800" />
-          <h1 className="text-white font-semibold flex items-center gap-2">
-            <Users className="w-5 h-5 text-blue-400" /> User Personas
-          </h1>
+          <div className="h-4 w-px" style={{ background: BORD }} />
+          <div className="flex items-center gap-2">
+            <Users className="w-5 h-5" style={{ color: A }} />
+            <h1 className="font-semibold text-white">User Personas</h1>
+          </div>
+          <div className="ml-auto">
+            <img src="/logo.svg" alt="BrandEcho" style={{ height: "28px", width: "auto" }} />
+          </div>
         </header>
 
         <main className="px-6 py-8 animate-fade-in">
+          {/* Persona selector cards */}
           <div className="grid grid-cols-3 gap-4 mb-8">
             {personas.map((p) => (
               <button
                 key={p.id}
                 onClick={() => setSelected(p.id)}
-                className={`text-left rounded-2xl border p-5 transition-all ${
-                  selected === p.id
-                    ? "bg-blue-950/50 border-blue-600"
-                    : "bg-slate-900 border-slate-800 hover:border-slate-700"
-                }`}
+                className="text-left rounded-2xl border p-5 transition-all"
+                style={{
+                  background: selected === p.id ? "rgba(0,255,150,0.08)" : SURF,
+                  borderColor: selected === p.id ? A : BORD,
+                }}
               >
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-white text-xl font-bold mb-3">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold mb-3"
+                  style={{ background: selected === p.id ? A : "#2a2a2a", color: selected === p.id ? BG : A }}
+                >
                   {p.name.charAt(0)}
                 </div>
                 <h3 className="font-semibold text-white text-sm mb-1">{p.name}</h3>
-                <p className="text-xs text-slate-500">{p.age_range} · {p.archetype}</p>
+                <p className="text-xs" style={{ color: "#666" }}>{p.age_range} · {p.archetype}</p>
               </button>
             ))}
           </div>
 
           {active && (
             <div className="grid grid-cols-2 gap-6 animate-fade-in">
-              {/* Pain points */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+              {/* Pain Points */}
+              <div className="rounded-2xl border p-6" style={{ background: SURF, borderColor: BORD }}>
                 <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-                  <Target className="w-4 h-4 text-red-400" /> Pain Points
+                  <Target className="w-4 h-4" style={{ color: "#f87171" }} /> Pain Points
                 </h3>
                 <ul className="space-y-2">
                   {active.pain_points?.map((pt, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 mt-2 flex-shrink-0" />
+                    <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "#ccc" }}>
+                      <span className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ background: "#f87171" }} />
                       {pt}
                     </li>
                   ))}
@@ -95,14 +119,14 @@ export default function PersonasPage() {
               </div>
 
               {/* Goals */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+              <div className="rounded-2xl border p-6" style={{ background: SURF, borderColor: BORD }}>
                 <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-green-400" /> Goals
+                  <Zap className="w-4 h-4" style={{ color: A }} /> Goals
                 </h3>
                 <ul className="space-y-2">
                   {active.goals?.map((g, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 mt-2 flex-shrink-0" />
+                    <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "#ccc" }}>
+                      <span className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ background: A }} />
                       {g}
                     </li>
                   ))}
@@ -110,19 +134,23 @@ export default function PersonasPage() {
               </div>
 
               {/* AI Usage */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 col-span-2">
+              <div className="rounded-2xl border p-6 col-span-2" style={{ background: SURF, borderColor: BORD }}>
                 <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-                  <Bot className="w-4 h-4 text-purple-400" /> AI Tool Usage & Query Style
+                  <Bot className="w-4 h-4" style={{ color: "#a78bfa" }} /> AI Tool Usage & Query Style
                 </h3>
                 <div className="flex flex-wrap gap-2 mb-4">
                   {active.ai_tools_used?.map((tool) => (
-                    <span key={tool} className="px-3 py-1.5 rounded-full bg-purple-950/50 border border-purple-800/40 text-purple-300 text-sm">
+                    <span
+                      key={tool}
+                      className="px-3 py-1.5 rounded-full text-sm border"
+                      style={{ background: "rgba(167,139,250,0.1)", borderColor: "rgba(167,139,250,0.25)", color: "#a78bfa" }}
+                    >
                       {tool}
                     </span>
                   ))}
                 </div>
-                <p className="text-sm text-slate-400">
-                  <span className="text-slate-300 font-medium">Query style: </span>
+                <p className="text-sm" style={{ color: "#888" }}>
+                  <span className="font-medium" style={{ color: "#ccc" }}>Query style: </span>
                   {active.query_style}
                 </p>
               </div>

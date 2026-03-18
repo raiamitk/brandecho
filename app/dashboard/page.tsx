@@ -2,10 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Users, MessageSquare, Building2, ArrowRight, Zap, Globe, Bot, Download } from "lucide-react";
+import { TrendingUp, Users, MessageSquare, Building2, ArrowRight, Globe, Bot, Download, FileText } from "lucide-react";
 import SmartRecommendationsPanel from "@/components/SmartRecommendationsPanel";
 import type { Brand, Persona, Query, Competitor, Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
+
+const A = "#00FF96";
+const BG = "#141414";
+const SURF = "#1c1c1c";
+const BORD = "#2a2a2a";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -23,44 +28,44 @@ export default function DashboardPage() {
   }, []);
 
   const loadData = async (brandId: string) => {
-    const [brandRes, personasRes, queriesRes, competitorsRes, recsRes] = await Promise.all([
+    const [bR, pR, qR, cR, rR] = await Promise.all([
       supabase.from("brands").select("*").eq("id", brandId).single(),
       supabase.from("personas").select("*").eq("brand_id", brandId),
       supabase.from("queries").select("*").eq("brand_id", brandId),
       supabase.from("competitors").select("*").eq("brand_id", brandId),
       supabase.from("recommendations").select("*").eq("brand_id", brandId).order("priority"),
     ]);
-
-    if (brandRes.data)       setBrand(brandRes.data);
-    if (personasRes.data)    setPersonas(personasRes.data);
-    if (queriesRes.data)     setQueries(queriesRes.data);
-    if (competitorsRes.data) setCompetitors(competitorsRes.data);
-    if (recsRes.data)        setRecs(recsRes.data);
+    if (bR.data) setBrand(bR.data);
+    if (pR.data) setPersonas(pR.data);
+    if (qR.data) setQueries(qR.data);
+    if (cR.data) setCompetitors(cR.data);
+    if (rR.data) setRecs(rR.data);
     setLoading(false);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: BG }}>
+      <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: A, borderTopColor: "transparent" }} />
+    </div>
+  );
 
-  const aeoQueries = queries.filter(q => q.type === "aeo");
-  const seoQueries = queries.filter(q => q.type === "seo_longtail");
   const highRevQueries = queries.filter(q => q.revenue_proximity >= 70);
 
+  // ── CSV Download ──────────────────────────────────────────────────────────
   const downloadCSV = () => {
     const rows = [
+      ["BrandEcho Report —", brand?.name || "", "", ""],
+      [""], ["QUERIES", "", "", ""],
       ["Query", "Type", "Intent", "Revenue Proximity (%)"],
       ...queries.map(q => [q.text, q.type, q.intent, q.revenue_proximity]),
-      [], ["Competitor", "Domain", "Type"],
-      ...competitors.map(c => [c.name, c.domain, c.type]),
-      [], ["Recommendation", "Category", "Priority", "Projected Lift"],
+      [""], ["COMPETITORS", "", "", ""],
+      ["Competitor", "Domain", "Type", ""],
+      ...competitors.map(c => [c.name, c.domain, c.type, ""]),
+      [""], ["RECOMMENDATIONS", "", "", ""],
+      ["Title", "Category", "Priority", "Projected Lift"],
       ...recs.map(r => [r.title, r.category, r.priority, r.projected_lift]),
     ];
-    const csv = rows.map(r => r.map(String).map(v => `"${v}"`).join(",")).join("\n");
+    const csv  = rows.map(r => r.map(String).map(v => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
@@ -68,96 +73,139 @@ export default function DashboardPage() {
     URL.revokeObjectURL(url);
   };
 
-  return (
-    <div className="min-h-screen bg-slate-950 flex">
+  // ── PDF Download (browser print) ──────────────────────────────────────────
+  const downloadPDF = () => {
+    const content = `
+      <html><head><title>BrandEcho — ${brand?.name}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 40px; color: #111; }
+        h1 { color: #000; font-size: 24px; border-bottom: 3px solid #00FF96; padding-bottom: 10px; }
+        h2 { color: #222; font-size: 16px; margin-top: 28px; border-left: 4px solid #00FF96; padding-left: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        th { background: #141414; color: #00FF96; padding: 8px 10px; text-align: left; }
+        td { padding: 7px 10px; border-bottom: 1px solid #eee; }
+        tr:nth-child(even) td { background: #f9f9f9; }
+        .badge { display:inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: bold; }
+        .aeo { background:#f3e8ff; color:#7c3aed; }
+        .geo { background:#dcfce7; color:#16a34a; }
+        .seo { background:#dbeafe; color:#2563eb; }
+        .high { color: #dc2626; font-weight:bold; }
+        .medium { color: #d97706; }
+        .low { color: #16a34a; }
+        footer { margin-top: 40px; font-size: 11px; color: #888; text-align: center; }
+      </style></head><body>
+      <h1>BrandEcho Report — ${brand?.name}</h1>
+      <p style="color:#555; font-size:13px;">Industry: ${brand?.industry} &nbsp;|&nbsp; Domain: ${brand?.domain} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString()}</p>
 
-      {/* Main content (leaves space for right panel) */}
+      <h2>Queries (${queries.length} total)</h2>
+      <table><tr><th>Query</th><th>Type</th><th>Intent</th><th>Revenue %</th></tr>
+      ${queries.map(q => `<tr><td>${q.text}</td><td><span class="badge ${q.type === "seo_longtail" ? "seo" : q.type}">${q.type.toUpperCase()}</span></td><td>${q.intent}</td><td>${q.revenue_proximity}%</td></tr>`).join("")}
+      </table>
+
+      <h2>Competitors (${competitors.length} found)</h2>
+      <table><tr><th>Name</th><th>Domain</th><th>Type</th></tr>
+      ${competitors.map(c => `<tr><td>${c.name}</td><td>${c.domain}</td><td>${c.type}</td></tr>`).join("")}
+      </table>
+
+      <h2>Recommendations</h2>
+      <table><tr><th>Title</th><th>Category</th><th>Priority</th><th>Projected Lift</th></tr>
+      ${recs.map(r => `<tr><td>${r.title}</td><td>${r.category}</td><td class="${r.priority}">${r.priority}</td><td>${r.projected_lift}</td></tr>`).join("")}
+      </table>
+
+      <footer>Generated by BrandEcho &nbsp;|&nbsp; Powered by Claude AI</footer>
+      </body></html>`;
+
+    const w = window.open("", "_blank")!;
+    w.document.write(content);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); w.close(); }, 500);
+  };
+
+  return (
+    <div className="min-h-screen flex" style={{ background: BG }}>
       <div className="flex-1 pr-80">
 
-        {/* Top nav */}
-        <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur-sm border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-white" />
-            </div>
+        {/* Header */}
+        <header className="sticky top-0 z-30 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between"
+          style={{ background: "rgba(20,20,20,0.9)", borderColor: BORD }}>
+          <div className="flex items-center gap-4">
+            <img src="/logo.svg" alt="BrandEcho" style={{ height: "30px", width: "auto" }} />
+            <div className="h-5 w-px" style={{ background: BORD }} />
             <div>
-              <span className="text-white font-semibold">{brand?.name || "Dashboard"}</span>
-              <span className="text-slate-500 text-sm ml-2">{brand?.industry}</span>
+              <span className="text-white font-semibold">{brand?.name}</span>
+              <span className="text-sm ml-2" style={{ color: "#555" }}>{brand?.industry}</span>
             </div>
           </div>
-          <button
-              onClick={downloadCSV}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600 text-white text-sm font-medium transition-colors mr-2"
-            >
-              <Download className="w-4 h-4" /> Download Report
+          <div className="flex items-center gap-2">
+            <button onClick={downloadCSV}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border"
+              style={{ borderColor: BORD, color: "#888", background: SURF }}
+              onMouseEnter={e => (e.currentTarget.style.color = "#fff")}
+              onMouseLeave={e => (e.currentTarget.style.color = "#888")}>
+              <Download className="w-4 h-4" /> CSV
             </button>
-          <nav className="flex items-center gap-1">
-            {[
-              { label: "Overview",    href: "/dashboard" },
-              { label: "Personas",    href: "/personas" },
-              { label: "Queries",     href: "/queries" },
-            ].map(({ label, href }) => (
-              <button
-                key={href}
-                onClick={() => router.push(href)}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                  href === "/dashboard"
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-400 hover:text-white hover:bg-slate-800"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
+            <button onClick={downloadPDF}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-all"
+              style={{ background: A, color: BG }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#00cc78")}
+              onMouseLeave={e => (e.currentTarget.style.background = A)}>
+              <FileText className="w-4 h-4" /> Download PDF
+            </button>
+            <nav className="flex items-center gap-1 ml-2">
+              {[{ label: "Overview", href: "/dashboard" }, { label: "Personas", href: "/personas" }, { label: "Queries", href: "/queries" }]
+                .map(({ label, href }) => (
+                  <button key={href} onClick={() => router.push(href)}
+                    className="px-4 py-2 rounded-lg text-sm transition-colors"
+                    style={{ background: href === "/dashboard" ? A : "transparent", color: href === "/dashboard" ? BG : "#888" }}>
+                    {label}
+                  </button>
+                ))}
+            </nav>
+          </div>
         </header>
 
-        {/* Page body */}
         <main className="px-6 py-8 space-y-8 animate-fade-in">
 
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: "Total Queries",        value: queries.length,      icon: MessageSquare, color: "text-blue-400",   change: "+75 generated" },
-              { label: "AI Engine Coverage",   value: "8",                 icon: Bot,           color: "text-purple-400", change: "Grok, GPT, Claude..." },
-              { label: "Competitors Found",    value: competitors.length,  icon: Building2,     color: "text-orange-400", change: "Direct + substitutes" },
-              { label: "High-Revenue Queries", value: highRevQueries.length, icon: TrendingUp, color: "text-green-400",  change: "Proximity ≥70%" },
-            ].map(({ label, value, icon: Icon, color, change }) => (
-              <div key={label} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 card-lift">
-                <div className={`w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center mb-3 ${color}`}>
-                  <Icon className="w-5 h-5" />
+              { label: "Total Queries",        value: queries.length,        icon: MessageSquare },
+              { label: "AI Engine Coverage",   value: "8",                   icon: Bot },
+              { label: "Competitors Found",    value: competitors.length,    icon: Building2 },
+              { label: "High-Revenue Queries", value: highRevQueries.length, icon: TrendingUp },
+            ].map(({ label, value, icon: Icon }) => (
+              <div key={label} className="rounded-2xl p-5 card-lift border" style={{ background: SURF, borderColor: BORD }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: "rgba(0,255,150,0.1)" }}>
+                  <Icon className="w-5 h-5" style={{ color: A }} />
                 </div>
                 <div className="text-3xl font-bold text-white mb-1">{value}</div>
-                <div className="text-sm text-slate-400 mb-0.5">{label}</div>
-                <div className="text-xs text-slate-600">{change}</div>
+                <div className="text-sm text-gray-500">{label}</div>
               </div>
             ))}
           </div>
 
-          {/* Personas strip */}
+          {/* Personas */}
           <section>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-400" />
-                Auto-Generated Personas
+              <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                <Users className="w-4 h-4" style={{ color: A }} /> Personas
               </h2>
-              <button onClick={() => router.push("/personas")} className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
+              <button onClick={() => router.push("/personas")} className="text-sm flex items-center gap-1" style={{ color: A }}>
                 View all <ArrowRight className="w-4 h-4" />
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {personas.slice(0, 3).map((p, i) => (
-                <div key={p.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 card-lift">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-white font-bold text-lg mb-3">
+              {personas.slice(0, 3).map(p => (
+                <div key={p.id} className="rounded-2xl p-5 card-lift border" style={{ background: SURF, borderColor: BORD }}>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-black font-bold text-lg mb-3" style={{ background: A }}>
                     {p.name.charAt(0)}
                   </div>
                   <h3 className="font-semibold text-white text-sm mb-1">{p.name}</h3>
-                  <p className="text-xs text-slate-500 mb-3">{p.age_range} · {p.archetype}</p>
-                  <div className="space-y-1">
-                    {p.pain_points?.slice(0, 2).map((pt, j) => (
-                      <p key={j} className="text-xs text-slate-400">• {pt}</p>
-                    ))}
-                  </div>
+                  <p className="text-xs text-gray-500 mb-3">{p.age_range} · {p.archetype}</p>
+                  {p.pain_points?.slice(0, 2).map((pt, j) => (
+                    <p key={j} className="text-xs text-gray-500">• {pt}</p>
+                  ))}
                 </div>
               ))}
             </div>
@@ -165,21 +213,18 @@ export default function DashboardPage() {
 
           {/* Competitors */}
           <section>
-            <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-              <Building2 className="w-5 h-5 text-orange-400" />
-              Competitors Discovered
+            <h2 className="text-base font-semibold text-white flex items-center gap-2 mb-4">
+              <Building2 className="w-4 h-4" style={{ color: A }} /> Competitors
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {competitors.map((c) => (
-                <div key={c.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 card-lift flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center flex-shrink-0">
-                    <Globe className="w-4 h-4 text-slate-400" />
-                  </div>
+              {competitors.map(c => (
+                <div key={c.id} className="rounded-xl p-4 card-lift flex items-center gap-3 border" style={{ background: SURF, borderColor: BORD }}>
+                  <Globe className="w-4 h-4 flex-shrink-0" style={{ color: A }} />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-white truncate">{c.name}</p>
-                    <p className="text-xs text-slate-500 truncate">{c.domain}</p>
-                    <span className={`text-xs ${c.type === "direct" ? "text-orange-400" : "text-purple-400"}`}>
-                      {c.type === "direct" ? "Direct" : "Category sub"}
+                    <p className="text-xs text-gray-600 truncate">{c.domain}</p>
+                    <span className="text-xs" style={{ color: c.type === "direct" ? "#fb923c" : "#a78bfa" }}>
+                      {c.type === "direct" ? "Direct" : "Substitute"}
                     </span>
                   </div>
                 </div>
@@ -187,44 +232,37 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {/* Query preview */}
+          {/* Queries preview */}
           <section>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-purple-400" />
-                Query Preview
+              <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                <MessageSquare className="w-4 h-4" style={{ color: A }} /> Query Preview
               </h2>
-              <button onClick={() => router.push("/queries")} className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
+              <button onClick={() => router.push("/queries")} className="text-sm flex items-center gap-1" style={{ color: A }}>
                 View all {queries.length} <ArrowRight className="w-4 h-4" />
               </button>
             </div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-              <div className="divide-y divide-slate-800">
-                {queries.slice(0, 5).map((q) => (
-                  <div key={q.id} className="px-5 py-3 flex items-center gap-4 hover:bg-slate-800/50 transition-colors">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${
-                      q.type === "aeo"         ? "bg-purple-950/60 text-purple-400 border border-purple-800/40" :
-                      q.type === "geo"         ? "bg-green-950/60  text-green-400  border border-green-800/40"  :
-                      "bg-blue-950/60 text-blue-400 border border-blue-800/40"
-                    }`}>
-                      {q.type.toUpperCase()}
-                    </span>
-                    <p className="text-sm text-slate-300 flex-1 truncate">{q.text}</p>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <div className="h-1.5 w-16 bg-slate-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 rounded-full" style={{ width: `${q.revenue_proximity}%` }} />
-                      </div>
-                      <span className="text-xs text-slate-500">{q.revenue_proximity}%</span>
+            <div className="rounded-2xl overflow-hidden border" style={{ background: SURF, borderColor: BORD }}>
+              {queries.slice(0, 5).map(q => (
+                <div key={q.id} className="px-5 py-3 flex items-center gap-4 border-b" style={{ borderColor: BORD }}>
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
+                    style={{ background: "rgba(0,255,150,0.1)", color: A }}>
+                    {q.type === "seo_longtail" ? "SEO" : q.type.toUpperCase()}
+                  </span>
+                  <p className="text-sm text-gray-300 flex-1 truncate">{q.text}</p>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="h-1.5 w-14 rounded-full overflow-hidden" style={{ background: BORD }}>
+                      <div className="h-full rounded-full" style={{ width: `${q.revenue_proximity}%`, background: A }} />
                     </div>
+                    <span className="text-xs text-gray-600">{q.revenue_proximity}%</span>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           </section>
         </main>
       </div>
 
-      {/* Smart Recommendations Panel */}
       <SmartRecommendationsPanel recommendations={recs} brandName={brand?.name || ""} />
     </div>
   );
