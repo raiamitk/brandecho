@@ -8,9 +8,9 @@ import type { Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 
 const A    = "#00FF96";
-const BG   = "#141414";
-const SURF = "#1c1c1c";
-const BORD = "#2a2a2a";
+const BG   = "#ffffff";
+const SURF = "#f9fafb";
+const BORD = "#e5e7eb";
 
 type Brief = {
   query_id: string; query_text: string; recommended_title: string;
@@ -89,7 +89,7 @@ export default function BriefsPage() {
 
         {/* Nav */}
         <header className="sticky top-0 z-30 backdrop-blur-sm border-b px-6 py-4 flex items-center gap-4"
-          style={{ background: "rgba(20,20,20,0.85)", borderColor: BORD }}>
+          style={{ background: "rgba(255,255,255,0.92)", borderColor: BORD }}>
           <button onClick={() => router.push("/dashboard")} className="flex items-center gap-1.5 text-sm"
             style={{ color: "#888" }}
             onMouseEnter={e => (e.currentTarget.style.color = "#fff")}
@@ -99,7 +99,7 @@ export default function BriefsPage() {
           <div className="h-4 w-px" style={{ background: BORD }} />
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5" style={{ color: A }} />
-            <h1 className="font-semibold text-white">Content Brief Generator</h1>
+            <h1 className="font-semibold" style={{ color: "#111827" }} className="">Content Brief Generator</h1>
           </div>
           <div className="ml-auto">
             <img src="/logo.svg" alt="BrandEcho" style={{ height: "28px", width: "auto" }} />
@@ -115,7 +115,7 @@ export default function BriefsPage() {
                 style={{ background: "rgba(0,255,150,0.1)", border: `1px solid ${A}` }}>
                 <Sparkles className="w-8 h-8" style={{ color: A }} />
               </div>
-              <h2 className="text-xl font-bold text-white mb-2">Content Briefs for <span style={{ color: A }}>{brandName}</span></h2>
+              <h2 className="text-xl font-bold mb-2">Content Briefs for <span style={{ color: A }}>{brandName}</span></h2>
               <p className="text-sm mb-2 max-w-lg mx-auto" style={{ color: "#666" }}>
                 We take your <strong style={{ color: "#ccc" }}>top 5 highest-revenue queries</strong> and generate structured content briefs — titles, H2s, key points, and the exact reason AI engines would cite your content.
               </p>
@@ -170,7 +170,7 @@ export default function BriefsPage() {
                             </span>
                             <span className="text-xs" style={{ color: "#555" }}>{b.word_count?.toLocaleString()} words</span>
                           </div>
-                          <h3 className="font-semibold text-white text-sm">{b.recommended_title}</h3>
+                          <h3 className="font-semibold" style={{ color: "#111827" }} className=" text-sm">{b.recommended_title}</h3>
                           <p className="text-xs mt-1" style={{ color: "#666" }}>Query: {b.query_text}</p>
                         </div>
                         <div className="flex-shrink-0" style={{ color: "#555" }}>
@@ -187,7 +187,7 @@ export default function BriefsPage() {
 
                           <div className="grid grid-cols-2 gap-6">
                             {/* H2 Sections */}
-                            <div className="rounded-xl border p-4" style={{ background: "#141414", borderColor: BORD }}>
+                            <div className="rounded-xl border p-4" style={{ background: "#ffffff", borderColor: BORD }}>
                               <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: A }}>H2 Sections</h4>
                               <ol className="space-y-2">
                                 {b.h2_sections?.map((h, i) => (
@@ -200,7 +200,7 @@ export default function BriefsPage() {
                             </div>
 
                             {/* Key Points */}
-                            <div className="rounded-xl border p-4" style={{ background: "#141414", borderColor: BORD }}>
+                            <div className="rounded-xl border p-4" style={{ background: "#ffffff", borderColor: BORD }}>
                               <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "#fbbf24" }}>Key Points to Include</h4>
                               <ul className="space-y-2">
                                 {b.key_points?.map((p, i) => (

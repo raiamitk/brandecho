@@ -8,9 +8,9 @@ import type { Persona, Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 
 const A    = "#00FF96";
-const BG   = "#141414";
-const SURF = "#1c1c1c";
-const BORD = "#2a2a2a";
+const BG   = "#ffffff";
+const SURF = "#f9fafb";
+const BORD = "#e5e7eb";
 
 export default function PersonasPage() {
   const router = useRouter();
@@ -55,7 +55,7 @@ export default function PersonasPage() {
         {/* Nav */}
         <header
           className="sticky top-0 z-30 backdrop-blur-sm border-b px-6 py-4 flex items-center gap-4"
-          style={{ background: "rgba(20,20,20,0.85)", borderColor: BORD }}
+          style={{ background: "rgba(255,255,255,0.92)", borderColor: BORD }}
         >
           <button
             onClick={() => router.push("/dashboard")}
@@ -69,7 +69,7 @@ export default function PersonasPage() {
           <div className="h-4 w-px" style={{ background: BORD }} />
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5" style={{ color: A }} />
-            <h1 className="font-semibold text-white">User Personas</h1>
+            <h1 className="font-semibold" style={{ color: "#111827" }} className="">User Personas</h1>
           </div>
           <div className="ml-auto">
             <img src="/logo.svg" alt="BrandEcho" style={{ height: "28px", width: "auto" }} />
@@ -95,7 +95,7 @@ export default function PersonasPage() {
                 >
                   {p.name.charAt(0)}
                 </div>
-                <h3 className="font-semibold text-white text-sm mb-1">{p.name}</h3>
+                <h3 className="font-semibold" style={{ color: "#111827" }} className=" text-sm mb-1">{p.name}</h3>
                 <p className="text-xs" style={{ color: "#666" }}>{p.age_range} · {p.archetype}</p>
               </button>
             ))}
@@ -105,7 +105,7 @@ export default function PersonasPage() {
             <div className="grid grid-cols-2 gap-6 animate-fade-in">
               {/* Pain Points */}
               <div className="rounded-2xl border p-6" style={{ background: SURF, borderColor: BORD }}>
-                <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                <h3 className="font-semibold" style={{ color: "#111827" }} className=" mb-4 flex items-center gap-2">
                   <Target className="w-4 h-4" style={{ color: "#f87171" }} /> Pain Points
                 </h3>
                 <ul className="space-y-2">
@@ -120,7 +120,7 @@ export default function PersonasPage() {
 
               {/* Goals */}
               <div className="rounded-2xl border p-6" style={{ background: SURF, borderColor: BORD }}>
-                <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                <h3 className="font-semibold" style={{ color: "#111827" }} className=" mb-4 flex items-center gap-2">
                   <Zap className="w-4 h-4" style={{ color: A }} /> Goals
                 </h3>
                 <ul className="space-y-2">
@@ -135,7 +135,7 @@ export default function PersonasPage() {
 
               {/* AI Usage */}
               <div className="rounded-2xl border p-6 col-span-2" style={{ background: SURF, borderColor: BORD }}>
-                <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                <h3 className="font-semibold" style={{ color: "#111827" }} className=" mb-4 flex items-center gap-2">
                   <Bot className="w-4 h-4" style={{ color: "#a78bfa" }} /> AI Tool Usage & Query Style
                 </h3>
                 <div className="flex flex-wrap gap-2 mb-4">

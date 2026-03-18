@@ -8,9 +8,9 @@ import type { Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 
 const A    = "#00FF96";
-const BG   = "#141414";
-const SURF = "#1c1c1c";
-const BORD = "#2a2a2a";
+const BG   = "#ffffff";
+const SURF = "#f9fafb";
+const BORD = "#e5e7eb";
 
 type GapRow = {
   query_id: string; query_text: string; query_type: string;
@@ -72,7 +72,7 @@ export default function CompetitorsPage() {
 
         {/* Nav */}
         <header className="sticky top-0 z-30 backdrop-blur-sm border-b px-6 py-4 flex items-center gap-4"
-          style={{ background: "rgba(20,20,20,0.85)", borderColor: BORD }}>
+          style={{ background: "rgba(255,255,255,0.92)", borderColor: BORD }}>
           <button onClick={() => router.push("/dashboard")} className="flex items-center gap-1.5 text-sm"
             style={{ color: "#888" }}
             onMouseEnter={e => (e.currentTarget.style.color = "#fff")}
@@ -82,7 +82,7 @@ export default function CompetitorsPage() {
           <div className="h-4 w-px" style={{ background: BORD }} />
           <div className="flex items-center gap-2">
             <BarChart2 className="w-5 h-5" style={{ color: A }} />
-            <h1 className="font-semibold text-white">Competitor Gap Analysis</h1>
+            <h1 className="font-semibold" style={{ color: "#111827" }} className="">Competitor Gap Analysis</h1>
           </div>
           <div className="ml-auto">
             <img src="/logo.svg" alt="BrandEcho" style={{ height: "28px", width: "auto" }} />
@@ -98,7 +98,7 @@ export default function CompetitorsPage() {
                 style={{ background: "rgba(0,255,150,0.1)", border: `1px solid ${A}` }}>
                 <BarChart2 className="w-8 h-8" style={{ color: A }} />
               </div>
-              <h2 className="text-xl font-bold text-white mb-2">Competitor Gap Analysis for <span style={{ color: A }}>{brandName}</span></h2>
+              <h2 className="text-xl font-bold mb-2">Competitor Gap Analysis for <span style={{ color: A }}>{brandName}</span></h2>
               <p className="text-sm mb-6 max-w-lg mx-auto" style={{ color: "#666" }}>
                 For each query, we check whether <strong style={{ color: "#ccc" }}>your brand</strong> or your <strong style={{ color: "#ccc" }}>competitors</strong> are likely mentioned by AI engines — and show you exactly where to close the gap.
               </p>
@@ -130,7 +130,7 @@ export default function CompetitorsPage() {
                 ].map(c => (
                   <div key={c.label} className="rounded-2xl border p-5" style={{ background: SURF, borderColor: BORD }}>
                     <div className="text-3xl font-extrabold mb-1" style={{ color: c.color }}>{c.value}</div>
-                    <div className="text-xs text-white font-medium">{c.label}</div>
+                    <div className="text-xs font-medium">{c.label}</div>
                   </div>
                 ))}
               </div>
@@ -181,7 +181,7 @@ export default function CompetitorsPage() {
                         onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.025)")}
                         onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
                         <div>
-                          <p className="text-sm text-white mb-1">{g.query_text}</p>
+                          <p className="text-sm mb-1">{g.query_text}</p>
                           <p className="text-xs" style={{ color: "#555" }}>
                             <TrendingUp className="w-3 h-3 inline mr-1" style={{ color: A }} />
                             {g.opportunity}

@@ -4,6 +4,9 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 
+const A  = "#00FF96";
+const AT = "#059669";
+
 interface Step { id: string; label: string; detail: string; status: "pending"|"running"|"done"|"error"; }
 
 const INITIAL_STEPS: Step[] = [
@@ -63,48 +66,53 @@ export default function ProcessingPage() {
   const progress = Math.round((done / steps.length) * 100);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12" style={{ background: "#141414" }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12" style={{ background: "#fff" }}>
       <div className="max-w-lg w-full">
         <div className="text-center mb-10">
-          <div className="flex justify-center mb-4">
+          <div className="flex justify-center mb-5">
             <img src="/logo.svg" alt="BrandEcho" style={{ height: "44px", width: "auto" }} />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Analysing <span style={{ color: "#00FF96" }}>{brandName}</span></h1>
-          <p className="text-gray-500 text-sm">Running AI agents — about 30–45 seconds</p>
+          <h1 className="text-2xl font-bold mb-2" style={{ color: "#111827" }}>
+            Analysing <span style={{ color: AT }}>{brandName}</span>
+          </h1>
+          <p className="text-sm" style={{ color: "#9ca3af" }}>Running AI agents — about 30–45 seconds</p>
         </div>
 
         <div className="mb-8">
-          <div className="flex justify-between text-xs text-gray-600 mb-2"><span>{done} of {steps.length} complete</span><span>{progress}%</span></div>
-          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#2a2a2a" }}>
-            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, background: "#00FF96" }} />
+          <div className="flex justify-between text-xs mb-2" style={{ color: "#9ca3af" }}>
+            <span>{done} of {steps.length} complete</span>
+            <span style={{ color: AT, fontWeight: 600 }}>{progress}%</span>
+          </div>
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: "#e5e7eb" }}>
+            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, background: A }} />
           </div>
         </div>
 
         <div className="space-y-2">
           {steps.map(step => (
             <div key={step.id} className="flex items-start gap-4 p-4 rounded-xl border transition-all duration-300" style={{
-              background: step.status === "running" ? "rgba(0,255,150,0.05)" : "#1c1c1c",
-              borderColor: step.status === "running" ? "rgba(0,255,150,0.4)" : step.status === "done" ? "rgba(0,255,150,0.15)" : "#2a2a2a",
+              background: step.status === "running" ? "rgba(0,255,150,0.06)" : "#f9fafb",
+              borderColor: step.status === "running" ? A : step.status === "done" ? "#d1fae5" : "#e5e7eb",
             }}>
               <div className="mt-0.5 flex-shrink-0">
-                {step.status === "done"    && <CheckCircle2 className="w-5 h-5" style={{ color: "#00FF96" }} />}
-                {step.status === "running" && <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#00FF96" }} />}
-                {step.status === "error"   && <XCircle className="w-5 h-5 text-red-400" />}
-                {step.status === "pending" && <div className="w-5 h-5 rounded-full border-2" style={{ borderColor: "#2a2a2a" }} />}
+                {step.status === "done"    && <CheckCircle2 className="w-5 h-5" style={{ color: AT }} />}
+                {step.status === "running" && <Loader2 className="w-5 h-5 animate-spin" style={{ color: AT }} />}
+                {step.status === "error"   && <XCircle className="w-5 h-5 text-red-500" />}
+                {step.status === "pending" && <div className="w-5 h-5 rounded-full border-2" style={{ borderColor: "#d1d5db" }} />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium" style={{ color: ["done","running"].includes(step.status) ? "#00FF96" : "#555" }}>{step.label}</p>
-                {step.status !== "pending" && <p className="text-xs text-gray-600 mt-0.5 truncate">{step.detail}</p>}
+                <p className="text-sm font-medium" style={{ color: ["done","running"].includes(step.status) ? "#111827" : "#9ca3af" }}>{step.label}</p>
+                {step.status !== "pending" && <p className="text-xs mt-0.5 truncate" style={{ color: "#6b7280" }}>{step.detail}</p>}
               </div>
             </div>
           ))}
         </div>
 
         {error && (
-          <div className="mt-6 p-4 rounded-xl border border-red-900/50 bg-red-950/30 text-red-300 text-sm">
+          <div className="mt-6 p-4 rounded-xl border text-sm" style={{ background: "#fef2f2", borderColor: "#fecaca", color: "#dc2626" }}>
             <p className="font-medium mb-1">Something went wrong</p>
-            <p className="text-red-400/80 mb-2">{error}</p>
-            <button onClick={() => router.push("/")} className="text-sm underline">Go back and try again</button>
+            <p className="mb-2 opacity-80">{error}</p>
+            <button onClick={() => router.push("/")} className="underline text-sm">Go back and try again</button>
           </div>
         )}
       </div>

@@ -8,9 +8,9 @@ import type { Query, Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 
 const A    = "#00FF96";
-const BG   = "#141414";
-const SURF = "#1c1c1c";
-const BORD = "#2a2a2a";
+const BG   = "#ffffff";
+const SURF = "#f9fafb";
+const BORD = "#e5e7eb";
 
 const TYPE_CONFIG = {
   aeo:          { label: "AEO", bg: "rgba(167,139,250,0.12)", color: "#a78bfa", border: "rgba(167,139,250,0.25)" },
@@ -73,7 +73,7 @@ export default function QueriesPage() {
         {/* Nav */}
         <header
           className="sticky top-0 z-30 backdrop-blur-sm border-b px-6 py-4 flex items-center gap-4"
-          style={{ background: "rgba(20,20,20,0.85)", borderColor: BORD }}
+          style={{ background: "rgba(255,255,255,0.92)", borderColor: BORD }}
         >
           <button
             onClick={() => router.push("/dashboard")}
@@ -87,7 +87,7 @@ export default function QueriesPage() {
           <div className="h-4 w-px" style={{ background: BORD }} />
           <div className="flex items-center gap-2">
             <MessageSquare className="w-5 h-5" style={{ color: A }} />
-            <h1 className="font-semibold text-white">
+            <h1 className="font-semibold" style={{ color: "#111827" }} className="">
               Query Explorer · <span style={{ color: A }}>{queries.length} queries</span>
             </h1>
           </div>
@@ -107,7 +107,7 @@ export default function QueriesPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search queries..."
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm text-white placeholder-gray-600 focus:outline-none transition-all"
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm placeholder-gray-600 focus:outline-none transition-all"
                 style={{ background: SURF, border: `1px solid ${BORD}` }}
                 onFocus={e => (e.target.style.borderColor = A)}
                 onBlur={e  => (e.target.style.borderColor = BORD)}

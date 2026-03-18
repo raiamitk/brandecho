@@ -9,8 +9,8 @@ import { supabase } from "@/lib/supabase";
 
 const A = "#00FF96";
 const BG = "#141414";
-const SURF = "#1c1c1c";
-const BORD = "#2a2a2a";
+const SURF = "#f9fafb";
+const BORD = "#e5e7eb";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -128,12 +128,12 @@ export default function DashboardPage() {
 
         {/* Header */}
         <header className="sticky top-0 z-30 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between"
-          style={{ background: "rgba(20,20,20,0.9)", borderColor: BORD }}>
+          style={{ background: "rgba(255,255,255,0.92)", borderColor: BORD }}>
           <div className="flex items-center gap-4">
             <img src="/logo.svg" alt="BrandEcho" style={{ height: "30px", width: "auto" }} />
             <div className="h-5 w-px" style={{ background: BORD }} />
             <div>
-              <span className="text-white font-semibold">{brand?.name}</span>
+              <span className="text-gray-900 font-semibold">{brand?.name}</span>
               <span className="text-sm ml-2" style={{ color: "#555" }}>{brand?.industry}</span>
             </div>
           </div>
@@ -179,7 +179,7 @@ export default function DashboardPage() {
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: "rgba(0,255,150,0.1)" }}>
                   <Icon className="w-5 h-5" style={{ color: A }} />
                 </div>
-                <div className="text-3xl font-bold text-white mb-1">{value}</div>
+                <div className="text-3xl font-bold text-gray-900 mb-1">{value}</div>
                 <div className="text-sm text-gray-500">{label}</div>
               </div>
             ))}
@@ -188,7 +188,7 @@ export default function DashboardPage() {
           {/* Personas */}
           <section>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-white flex items-center gap-2">
+              <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
                 <Users className="w-4 h-4" style={{ color: A }} /> Personas
               </h2>
               <button onClick={() => router.push("/personas")} className="text-sm flex items-center gap-1" style={{ color: A }}>
@@ -201,7 +201,7 @@ export default function DashboardPage() {
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-black font-bold text-lg mb-3" style={{ background: A }}>
                     {p.name.charAt(0)}
                   </div>
-                  <h3 className="font-semibold text-white text-sm mb-1">{p.name}</h3>
+                  <h3 className="font-semibold text-gray-900 text-sm mb-1">{p.name}</h3>
                   <p className="text-xs text-gray-500 mb-3">{p.age_range} · {p.archetype}</p>
                   {p.pain_points?.slice(0, 2).map((pt, j) => (
                     <p key={j} className="text-xs text-gray-500">• {pt}</p>
@@ -213,7 +213,7 @@ export default function DashboardPage() {
 
           {/* Competitors */}
           <section>
-            <h2 className="text-base font-semibold text-white flex items-center gap-2 mb-4">
+            <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2 mb-4">
               <Building2 className="w-4 h-4" style={{ color: A }} /> Competitors
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -221,8 +221,8 @@ export default function DashboardPage() {
                 <div key={c.id} className="rounded-xl p-4 card-lift flex items-center gap-3 border" style={{ background: SURF, borderColor: BORD }}>
                   <Globe className="w-4 h-4 flex-shrink-0" style={{ color: A }} />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{c.name}</p>
-                    <p className="text-xs text-gray-600 truncate">{c.domain}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{c.name}</p>
+                    <p className="text-xs text-gray-400 truncate">{c.domain}</p>
                     <span className="text-xs" style={{ color: c.type === "direct" ? "#fb923c" : "#a78bfa" }}>
                       {c.type === "direct" ? "Direct" : "Substitute"}
                     </span>
@@ -235,7 +235,7 @@ export default function DashboardPage() {
           {/* Queries preview */}
           <section>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-white flex items-center gap-2">
+              <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" style={{ color: A }} /> Query Preview
               </h2>
               <button onClick={() => router.push("/queries")} className="text-sm flex items-center gap-1" style={{ color: A }}>
@@ -249,12 +249,12 @@ export default function DashboardPage() {
                     style={{ background: "rgba(0,255,150,0.1)", color: A }}>
                     {q.type === "seo_longtail" ? "SEO" : q.type.toUpperCase()}
                   </span>
-                  <p className="text-sm text-gray-300 flex-1 truncate">{q.text}</p>
+                  <p className="text-sm text-gray-700 flex-1 truncate">{q.text}</p>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <div className="h-1.5 w-14 rounded-full overflow-hidden" style={{ background: BORD }}>
                       <div className="h-full rounded-full" style={{ width: `${q.revenue_proximity}%`, background: A }} />
                     </div>
-                    <span className="text-xs text-gray-600">{q.revenue_proximity}%</span>
+                    <span className="text-xs text-gray-400">{q.revenue_proximity}%</span>
                   </div>
                 </div>
               ))}
@@ -263,7 +263,7 @@ export default function DashboardPage() {
 
           {/* ── Phase 2 Feature Cards ─────────────────────────────────────── */}
           <section>
-            <h2 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+            <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <TrendingUp className="w-4 h-4" style={{ color: A }} /> Advanced Intelligence
             </h2>
             <div className="grid grid-cols-3 gap-4">
@@ -277,7 +277,7 @@ export default function DashboardPage() {
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "rgba(0,255,150,0.1)" }}>
                   <Eye className="w-5 h-5" style={{ color: A }} />
                 </div>
-                <h3 className="font-semibold text-white text-sm mb-2">AI Visibility Checker</h3>
+                <h3 className="font-semibold text-gray-900 text-sm mb-2">AI Visibility Checker</h3>
                 <p className="text-xs leading-relaxed" style={{ color: "#666" }}>
                   Score each query 0–100 for AI citability. Claude prediction + Gemini live check + web authority signals.
                 </p>
@@ -295,7 +295,7 @@ export default function DashboardPage() {
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "rgba(251,191,36,0.1)" }}>
                   <Sparkles className="w-5 h-5" style={{ color: "#fbbf24" }} />
                 </div>
-                <h3 className="font-semibold text-white text-sm mb-2">Content Brief Generator</h3>
+                <h3 className="font-semibold text-gray-900 text-sm mb-2">Content Brief Generator</h3>
                 <p className="text-xs leading-relaxed" style={{ color: "#666" }}>
                   Auto-generate structured briefs for top 5 revenue queries — titles, H2s, key points, and AI citation hooks.
                 </p>
@@ -313,7 +313,7 @@ export default function DashboardPage() {
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "rgba(248,113,113,0.1)" }}>
                   <BarChart2 className="w-5 h-5" style={{ color: "#f87171" }} />
                 </div>
-                <h3 className="font-semibold text-white text-sm mb-2">Competitor Gap Analysis</h3>
+                <h3 className="font-semibold text-gray-900 text-sm mb-2">Competitor Gap Analysis</h3>
                 <p className="text-xs leading-relaxed" style={{ color: "#666" }}>
                   Visual heatmap showing which queries competitors appear in that you don't — with specific fixes.
                 </p>

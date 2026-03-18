@@ -11,12 +11,13 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          bg:      "#141414",  // main background
-          surface: "#1c1c1c",  // cards/panels
-          border:  "#2a2a2a",  // borders
+          bg:      "#ffffff",  // main background
+          surface: "#f9fafb",  // cards/panels
+          border:  "#e5e7eb",  // borders
           accent:  "#00FF96",  // primary accent (neon green)
           "accent-dim": "#00cc78", // darker accent for hover
-          muted:   "#888888",  // muted text
+          "accent-text": "#059669", // green text readable on white
+          muted:   "#6b7280",  // muted text
         },
       },
       animation: {
