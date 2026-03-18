@@ -99,7 +99,7 @@ export default function BriefsPage() {
           <div className="h-4 w-px" style={{ background: BORD }} />
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5" style={{ color: A }} />
-            <h1 className="font-semibold" style={{ color: "#111827" }} className="">Content Brief Generator</h1>
+            <h1 className="font-semibold" style={{ color: "#111827" }}>Content Brief Generator</h1>
           </div>
           <div className="ml-auto">
             <img src="/logo.svg" alt="BrandEcho" style={{ height: "28px", width: "auto" }} />
@@ -117,7 +117,7 @@ export default function BriefsPage() {
               </div>
               <h2 className="text-xl font-bold mb-2">Content Briefs for <span style={{ color: A }}>{brandName}</span></h2>
               <p className="text-sm mb-2 max-w-lg mx-auto" style={{ color: "#666" }}>
-                We take your <strong style={{ color: "#ccc" }}>top 5 highest-revenue queries</strong> and generate structured content briefs — titles, H2s, key points, and the exact reason AI engines would cite your content.
+                We take your <strong style={{ color: "#374151" }}>top 5 highest-revenue queries</strong> and generate structured content briefs — titles, H2s, key points, and the exact reason AI engines would cite your content.
               </p>
               <p className="text-xs mb-6" style={{ color: "#444" }}>1 Claude API call · Results cached for free re-visits</p>
               {error && (
@@ -165,12 +165,12 @@ export default function BriefsPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <span className="text-xs px-2 py-0.5 rounded-full border" style={imp}>{b.estimated_impact} impact</span>
-                            <span className="text-xs px-2 py-0.5 rounded-full border" style={{ background: "rgba(255,255,255,0.05)", borderColor: BORD, color: "#888" }}>
+                            <span className="text-xs px-2 py-0.5 rounded-full border" style={{ background: SURF, borderColor: BORD, color: "#6b7280" }}>
                               {TYPE_LABEL[b.content_type] || b.content_type}
                             </span>
                             <span className="text-xs" style={{ color: "#555" }}>{b.word_count?.toLocaleString()} words</span>
                           </div>
-                          <h3 className="font-semibold" style={{ color: "#111827" }} className=" text-sm">{b.recommended_title}</h3>
+                          <h3 className="font-semibold text-sm" style={{ color: "#111827" }}>{b.recommended_title}</h3>
                           <p className="text-xs mt-1" style={{ color: "#666" }}>Query: {b.query_text}</p>
                         </div>
                         <div className="flex-shrink-0" style={{ color: "#555" }}>
@@ -191,7 +191,7 @@ export default function BriefsPage() {
                               <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: A }}>H2 Sections</h4>
                               <ol className="space-y-2">
                                 {b.h2_sections?.map((h, i) => (
-                                  <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "#ccc" }}>
+                                  <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "#374151" }}>
                                     <span className="font-bold flex-shrink-0" style={{ color: A }}>H2</span>
                                     {h}
                                   </li>
@@ -204,7 +204,7 @@ export default function BriefsPage() {
                               <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "#fbbf24" }}>Key Points to Include</h4>
                               <ul className="space-y-2">
                                 {b.key_points?.map((p, i) => (
-                                  <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "#ccc" }}>
+                                  <li key={i} className="flex items-start gap-2 text-sm" style={{ color: "#374151" }}>
                                     <span className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: "#fbbf24" }} />
                                     {p}
                                   </li>
@@ -215,7 +215,7 @@ export default function BriefsPage() {
                             {/* Citation Hook */}
                             <div className="col-span-2 rounded-xl border p-4" style={{ background: "rgba(0,255,150,0.05)", borderColor: "rgba(0,255,150,0.2)" }}>
                               <h4 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: A }}>Why AI Engines Would Cite This</h4>
-                              <p className="text-sm" style={{ color: "#ccc" }}>{b.citation_hook}</p>
+                              <p className="text-sm" style={{ color: "#374151" }}>{b.citation_hook}</p>
                               <div className="flex items-center gap-2 mt-3 text-xs" style={{ color: "#555" }}>
                                 <span>Schema: <span style={{ color: "#888" }}>{b.schema_markup}</span></span>
                               </div>

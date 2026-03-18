@@ -82,7 +82,7 @@ export default function CompetitorsPage() {
           <div className="h-4 w-px" style={{ background: BORD }} />
           <div className="flex items-center gap-2">
             <BarChart2 className="w-5 h-5" style={{ color: A }} />
-            <h1 className="font-semibold" style={{ color: "#111827" }} className="">Competitor Gap Analysis</h1>
+            <h1 className="font-semibold" style={{ color: "#111827" }}>Competitor Gap Analysis</h1>
           </div>
           <div className="ml-auto">
             <img src="/logo.svg" alt="BrandEcho" style={{ height: "28px", width: "auto" }} />
@@ -100,7 +100,7 @@ export default function CompetitorsPage() {
               </div>
               <h2 className="text-xl font-bold mb-2">Competitor Gap Analysis for <span style={{ color: A }}>{brandName}</span></h2>
               <p className="text-sm mb-6 max-w-lg mx-auto" style={{ color: "#666" }}>
-                For each query, we check whether <strong style={{ color: "#ccc" }}>your brand</strong> or your <strong style={{ color: "#ccc" }}>competitors</strong> are likely mentioned by AI engines — and show you exactly where to close the gap.
+                For each query, we check whether <strong style={{ color: "#374151" }}>your brand</strong> or your <strong style={{ color: "#374151" }}>competitors</strong> are likely mentioned by AI engines — and show you exactly where to close the gap.
               </p>
               {error && (
                 <div className="flex items-center gap-2 text-sm mb-4 p-3 rounded-xl justify-center"
@@ -123,7 +123,7 @@ export default function CompetitorsPage() {
               {/* Summary */}
               <div className="grid grid-cols-4 gap-4 mb-6">
                 {[
-                  { label: "Total Queries",    value: gaps.length,    color: "#fff" },
+                  { label: "Total Queries",    value: gaps.length,    color: "#111827" },
                   { label: "Gaps to Fix",       value: missingCount,   color: "#f87171" },
                   { label: "Weak Positions",    value: weakCount,      color: "#fbbf24" },
                   { label: "Strong Positions",  value: strongCount,    color: A },

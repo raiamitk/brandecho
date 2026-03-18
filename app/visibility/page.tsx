@@ -98,7 +98,7 @@ export default function VisibilityPage() {
           <div className="h-4 w-px" style={{ background: BORD }} />
           <div className="flex items-center gap-2">
             <Eye className="w-5 h-5" style={{ color: A }} />
-            <h1 className="font-semibold" style={{ color: "#111827" }} className="">AI Visibility Checker</h1>
+            <h1 className="font-semibold" style={{ color: "#111827" }}>AI Visibility Checker</h1>
           </div>
           <div className="ml-auto">
             <img src="/logo.svg" alt="BrandEcho" style={{ height: "28px", width: "auto" }} />
@@ -115,7 +115,7 @@ export default function VisibilityPage() {
               </div>
               <h2 className="text-xl font-bold mb-2">Check AI Visibility for <span style={{ color: A }}>{brandName}</span></h2>
               <p className="text-sm mb-6 max-w-lg mx-auto" style={{ color: "#666" }}>
-                We score each of your queries across <strong style={{ color: "#ccc" }}>3 signals</strong>: Claude prediction, Gemini live check (free tier), and web authority signals. Combined into a 0–100 visibility score.
+                We score each of your queries across <strong style={{ color: "#374151" }}>3 signals</strong>: Claude prediction, Gemini live check (free tier), and web authority signals. Combined into a 0–100 visibility score.
               </p>
               <div className="flex items-center justify-center gap-6 mb-8 text-xs" style={{ color: "#555" }}>
                 <span className="flex items-center gap-1.5"><Bot className="w-3.5 h-3.5" style={{ color: A }} /> Claude Prediction</span>
@@ -193,7 +193,7 @@ export default function VisibilityPage() {
                     <div key={r.query_id}
                       className="grid px-5 py-4 items-center group transition-colors"
                       style={{ gridTemplateColumns: "1fr 70px 70px 80px 80px 80px" }}
-                      onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.025)")}
+                      onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,0,0,0.03)")}
                       onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
                       <div>
                         <p className="text-sm mb-1 pr-4">{r.query_text}</p>
