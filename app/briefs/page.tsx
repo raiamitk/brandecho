@@ -92,7 +92,7 @@ export default function BriefsPage() {
           style={{ background: "rgba(255,255,255,0.92)", borderColor: BORD }}>
           <button onClick={() => router.push("/dashboard")} className="flex items-center gap-1.5 text-sm"
             style={{ color: "#888" }}
-            onMouseEnter={e => (e.currentTarget.style.color = "#fff")}
+            onMouseEnter={e => (e.currentTarget.style.color = "#111")}
             onMouseLeave={e => (e.currentTarget.style.color = "#888")}>
             <ChevronLeft className="w-4 h-4" /> Dashboard
           </button>

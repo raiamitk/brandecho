@@ -73,53 +73,119 @@ export default function DashboardPage() {
     URL.revokeObjectURL(url);
   };
 
-  // ── PDF Download (browser print) ──────────────────────────────────────────
+  // ── PDF Download (browser print — zero API tokens) ───────────────────────
   const downloadPDF = () => {
-    const content = `
-      <html><head><title>BrandEcho — ${brand?.name}</title>
-      <style>
-        body { font-family: Arial, sans-serif; padding: 40px; color: #111; }
-        h1 { color: #000; font-size: 24px; border-bottom: 3px solid #00FF96; padding-bottom: 10px; }
-        h2 { color: #222; font-size: 16px; margin-top: 28px; border-left: 4px solid #00FF96; padding-left: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-        th { background: #141414; color: #00FF96; padding: 8px 10px; text-align: left; }
-        td { padding: 7px 10px; border-bottom: 1px solid #eee; }
-        tr:nth-child(even) td { background: #f9f9f9; }
-        .badge { display:inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: bold; }
-        .aeo { background:#f3e8ff; color:#7c3aed; }
-        .geo { background:#dcfce7; color:#16a34a; }
-        .seo { background:#dbeafe; color:#2563eb; }
-        .high { color: #dc2626; font-weight:bold; }
-        .medium { color: #d97706; }
-        .low { color: #16a34a; }
-        footer { margin-top: 40px; font-size: 11px; color: #888; text-align: center; }
-      </style></head><body>
-      <h1>BrandEcho Report — ${brand?.name}</h1>
-      <p style="color:#555; font-size:13px;">Industry: ${brand?.industry} &nbsp;|&nbsp; Domain: ${brand?.domain} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString()}</p>
+    const personasHTML = personas.map(p => `
+      <div class="persona-card">
+        <div class="persona-header">
+          <span class="persona-initial">${p.name.charAt(0)}</span>
+          <div>
+            <strong style="font-size:14px">${p.name}</strong>
+            <span class="meta">${p.age_range || ""} · ${p.archetype || ""} · ${p.occupation || ""}</span>
+          </div>
+        </div>
+        <div class="two-col">
+          <div>
+            <div class="label">Pain Points</div>
+            <ul>${(p.pain_points || []).map((pt: string) => `<li>${pt}</li>`).join("")}</ul>
+          </div>
+          <div>
+            <div class="label">Goals</div>
+            <ul>${(p.goals || []).map((g: string) => `<li>${g}</li>`).join("")}</ul>
+          </div>
+        </div>
+        <div class="label" style="margin-top:8px">AI Tools Used</div>
+        <p style="margin:2px 0 6px">${(p.ai_tools_used || []).join(", ") || "—"}</p>
+        <div class="label">Query Style</div>
+        <p style="margin:2px 0">${p.query_style || "—"}</p>
+      </div>`).join("");
 
-      <h2>Queries (${queries.length} total)</h2>
-      <table><tr><th>Query</th><th>Type</th><th>Intent</th><th>Revenue %</th></tr>
-      ${queries.map(q => `<tr><td>${q.text}</td><td><span class="badge ${q.type === "seo_longtail" ? "seo" : q.type}">${q.type.toUpperCase()}</span></td><td>${q.intent}</td><td>${q.revenue_proximity}%</td></tr>`).join("")}
-      </table>
+    const recsHTML = recs.map((r, i) => `
+      <div class="rec-card p-${r.priority}">
+        <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:6px">
+          <span class="num">${i + 1}</span>
+          <div style="flex:1">
+            <strong>${r.title}</strong>
+            <span style="display:block;font-size:11px;color:#6b7280;margin-top:2px">
+              ${r.category.toUpperCase()} · <span class="${r.priority}">${r.priority} priority</span> · <strong style="color:#059669">${r.projected_lift}</strong>
+            </span>
+          </div>
+        </div>
+        <p style="margin:0 0 8px;color:#374151;font-size:12px">${r.description}</p>
+        <span class="action">${r.action_label}</span>
+      </div>`).join("");
 
-      <h2>Competitors (${competitors.length} found)</h2>
-      <table><tr><th>Name</th><th>Domain</th><th>Type</th></tr>
-      ${competitors.map(c => `<tr><td>${c.name}</td><td>${c.domain}</td><td>${c.type}</td></tr>`).join("")}
-      </table>
+    const content = `<html><head><title>BrandEcho — ${brand?.name}</title>
+    <style>
+      *{box-sizing:border-box}
+      body{font-family:-apple-system,Arial,sans-serif;padding:40px;color:#111;font-size:13px;line-height:1.6}
+      h1{font-size:28px;font-weight:800;margin:0 0 4px}
+      .sub{color:#6b7280;font-size:13px;padding-bottom:14px;border-bottom:3px solid #00FF96;margin-bottom:24px}
+      .brand-desc{color:#374151;margin-bottom:28px;font-size:13px;padding:12px;background:#f0fdf4;border-radius:8px}
+      h2{font-size:14px;font-weight:700;margin:28px 0 12px;padding:7px 12px;background:#f0fdf4;border-left:4px solid #00FF96;color:#111}
+      table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px}
+      th{background:#111;color:#fff;padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+      td{padding:8px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+      tr:nth-child(even) td{background:#fafafa}
+      .badge{display:inline-block;padding:2px 7px;border-radius:99px;font-size:11px;font-weight:600}
+      .aeo{background:#ede9fe;color:#6d28d9}.geo{background:#dcfce7;color:#15803d}
+      .seo,.seo_longtail{background:#dbeafe;color:#1d4ed8}
+      .high{color:#dc2626;font-weight:700}.medium{color:#d97706;font-weight:600}.low{color:#15803d}
+      .persona-card{border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:12px;background:#fafafa}
+      .persona-header{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+      .persona-initial{width:38px;height:38px;border-radius:10px;background:#00FF96;color:#111;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+      .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+      .meta{display:block;color:#6b7280;font-size:11px;margin-top:2px}
+      .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#059669;margin:4px 0 2px}
+      ul{margin:0;padding-left:16px} li{margin-bottom:3px;color:#374151}
+      .rec-card{border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:10px}
+      .p-high{border-left:4px solid #dc2626}.p-medium{border-left:4px solid #d97706}.p-low{border-left:4px solid #15803d}
+      .num{width:28px;height:28px;border-radius:8px;background:#00FF96;color:#111;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+      .action{display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600}
+      footer{margin-top:40px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:11px;color:#aaa;text-align:center}
+      @media print{body{padding:20px}}
+    </style></head><body>
 
-      <h2>Recommendations</h2>
-      <table><tr><th>Title</th><th>Category</th><th>Priority</th><th>Projected Lift</th></tr>
-      ${recs.map(r => `<tr><td>${r.title}</td><td>${r.category}</td><td class="${r.priority}">${r.priority}</td><td>${r.projected_lift}</td></tr>`).join("")}
-      </table>
+    <h1>BrandEcho Report — ${brand?.name}</h1>
+    <div class="sub">Industry: ${brand?.industry} &nbsp;·&nbsp; Domain: ${brand?.domain} &nbsp;·&nbsp; Generated: ${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</div>
+    <div class="brand-desc">${brand?.description || ""}</div>
 
-      <footer>Generated by BrandEcho &nbsp;|&nbsp; Powered by Claude AI</footer>
-      </body></html>`;
+    <h2>👤 User Personas (${personas.length})</h2>
+    ${personasHTML}
+
+    <h2>🔍 Queries (${queries.length} total)</h2>
+    <table>
+      <tr><th>Query</th><th style="width:70px">Type</th><th style="width:110px">Intent</th><th style="width:80px">Revenue %</th></tr>
+      ${queries.map(q => `<tr>
+        <td>${q.text}</td>
+        <td><span class="badge ${q.type}">${q.type==="seo_longtail"?"SEO":q.type.toUpperCase()}</span></td>
+        <td style="text-transform:capitalize">${q.intent}</td>
+        <td style="font-weight:700;color:#059669">${q.revenue_proximity}%</td>
+      </tr>`).join("")}
+    </table>
+
+    <h2>🏢 Competitors (${competitors.length} found)</h2>
+    <table>
+      <tr><th>Name</th><th>Domain</th><th style="width:140px">Type</th><th>Why Relevant</th></tr>
+      ${competitors.map(c => `<tr>
+        <td style="font-weight:600">${c.name}</td>
+        <td style="color:#6b7280">${c.domain}</td>
+        <td>${c.type==="direct"?"Direct Competitor":"Category Substitute"}</td>
+        <td style="color:#6b7280">${c.why||""}</td>
+      </tr>`).join("")}
+    </table>
+
+    <h2>💡 Smart Recommendations (${recs.length})</h2>
+    ${recsHTML}
+
+    <footer>Generated by BrandEcho &nbsp;·&nbsp; Powered by Claude AI &nbsp;·&nbsp; ${new Date().toLocaleString()}</footer>
+    </body></html>`;
 
     const w = window.open("", "_blank")!;
     w.document.write(content);
     w.document.close();
     w.focus();
-    setTimeout(() => { w.print(); w.close(); }, 500);
+    setTimeout(() => { w.print(); }, 600);
   };
 
   return (
@@ -140,9 +206,9 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <button onClick={downloadCSV}
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border"
-              style={{ borderColor: BORD, color: "#888", background: SURF }}
-              onMouseEnter={e => (e.currentTarget.style.color = "#fff")}
-              onMouseLeave={e => (e.currentTarget.style.color = "#888")}>
+              style={{ borderColor: BORD, color: "#555", background: SURF }}
+              onMouseEnter={e => (e.currentTarget.style.color = "#111")}
+              onMouseLeave={e => (e.currentTarget.style.color = "#555")}>
               <Download className="w-4 h-4" /> CSV
             </button>
             <button onClick={downloadPDF}
