@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Domain Authority — OpenPageRank API (free, 1000 req/month, no credit card)
-//  Get key: https://www.domainranker.com/ → Register → API Key
+//  Get key: https://openpagerank.com/ → Register (free, email only) → API Key
 //  Without key: returns mock/unavailable state gracefully
 // ─────────────────────────────────────────────────────────────────────────────
 

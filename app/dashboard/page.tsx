@@ -1080,7 +1080,7 @@ export default function DashboardPage() {
             <div style={{ textAlign: "center", padding: "32px 0" }}>
               <p style={{ color: T3, fontSize: 13, marginBottom: 16, maxWidth: 440, margin: "0 auto 16px" }}>
                 Compare your domain's PageRank against competitors. Higher authority = more likely to be cited in AI answers.
-                {!process.env.NEXT_PUBLIC_HAS_OPR && <span style={{ display: "block", marginTop: 8, color: "#d97706" }}>⚠️ Add <strong>OPENPR_API_KEY</strong> in Vercel for live scores (free at domainranker.com)</span>}
+                {!process.env.NEXT_PUBLIC_HAS_OPR && <span style={{ display: "block", marginTop: 8, color: "#d97706" }}>⚠️ Add <strong>OPENPR_API_KEY</strong> in Vercel for live scores (free at openpagerank.com)</span>}
               </p>
               <button onClick={runAuthorityCheck} disabled={authLoading}
                 style={{ background: "#f59e0b", color: "#fff", fontWeight: 700, padding: "10px 28px",
@@ -1107,7 +1107,7 @@ export default function DashboardPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                 {!apiAvail && (
                   <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#92400e" }}>
-                    📊 <strong>Live scores unavailable</strong> — Add <code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: 4 }}>OPENPR_API_KEY</code> in Vercel env vars for real scores (free at <strong>domainranker.com</strong>).
+                    📊 <strong>Live scores unavailable</strong> — Add <code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: 4 }}>OPENPR_API_KEY</code> in Vercel env vars for real scores (free at <strong>openpagerank.com</strong>).
                   </div>
                 )}
 
