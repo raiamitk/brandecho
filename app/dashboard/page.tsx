@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Eye, Sparkles, BarChart2, TrendingUp, Users, MessageSquare,
-  Building2, Globe, Download, FileText, Zap,
-  CheckCircle, XCircle, ChevronDown, ChevronUp, Copy, Check,
+  Building2, Globe, Download, FileText, Zap, Gauge,
+  CheckCircle, XCircle, ChevronDown, ChevronUp, Copy, Check, AlertTriangle,
 } from "lucide-react";
 import type { Brand, Persona, Query, Competitor, Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
@@ -31,12 +31,13 @@ const TYPE_STYLE: Record<string, { bg: string; color: string }> = {
 };
 
 // ── Tab config ────────────────────────────────────────────────────────────────
-type TabId = "scan" | "visibility" | "briefs" | "gap";
+type TabId = "scan" | "visibility" | "briefs" | "gap" | "technical";
 const TABS: { id: TabId; label: string; Icon: React.ElementType; accentColor: string; desc: string }[] = [
   { id: "scan",       label: "AEO / GEO Scan",    Icon: Zap,       accentColor: A,         desc: "Personas, queries, competitors & smart recommendations from your brand scan" },
   { id: "visibility", label: "AI Visibility",      Icon: Eye,       accentColor: A,         desc: "Score every query for AI citability — Claude + Gemini + web authority signals" },
   { id: "briefs",     label: "Content Briefs",     Icon: Sparkles,  accentColor: "#fbbf24", desc: "AI-optimised content briefs for your top queries — ready to publish" },
   { id: "gap",        label: "Competitor Gap",     Icon: BarChart2, accentColor: "#f87171", desc: "Queries where competitors appear in AI answers but your brand doesn't" },
+  { id: "technical",  label: "Technical Audit",    Icon: Gauge,     accentColor: "#818cf8", desc: "PageSpeed + Core Web Vitals for mobile & desktop — with AEO impact per metric" },
 ];
 
 // ── API response types ────────────────────────────────────────────────────────
@@ -118,6 +119,10 @@ export default function DashboardPage() {
   const [briefsLoading,setBriefsLoading]= useState(false);
   const [gapData,      setGapData]      = useState<GapRow[]>([]);
   const [gapLoading,   setGapLoading]   = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [psData,       setPsData]       = useState<Record<string, any> | null>(null);
+  const [psLoading,    setPsLoading]    = useState(false);
+  const [psError,      setPsError]      = useState<string | null>(null);
 
   // UI state
   const [expandedBrief,   setExpandedBrief]   = useState<string | null>(null);
@@ -181,6 +186,22 @@ export default function DashboardPage() {
       setGapData(data.gaps || []);
     } catch (e) { console.error(e); }
     setGapLoading(false);
+  };
+
+  const runPageSpeed = async () => {
+    const brand_id = sessionStorage.getItem("brand_id");
+    if (!brand_id || !brand?.domain) return;
+    setPsLoading(true);
+    setPsError(null);
+    try {
+      const res  = await fetch("/api/pagespeed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id, domain: brand.domain }) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setPsData(data);
+    } catch (e) {
+      setPsError(String(e));
+    }
+    setPsLoading(false);
   };
 
   // ── Copy brief ──────────────────────────────────────────────────────────────
@@ -799,6 +820,184 @@ export default function DashboardPage() {
     );
   };
 
+  // TECHNICAL TAB ───────────────────────────────────────────────────────────
+  const TechnicalTab = () => {
+    if (!psData) return (
+      <RunCTA
+        icon={Gauge} accentColor="#818cf8"
+        title="Technical Audit"
+        desc={`Check ${brand?.domain || "your site"} performance on mobile & desktop using Google PageSpeed Insights. See Core Web Vitals, top fixes, and why each metric matters for AI citability.`}
+        label="Run PageSpeed Audit"
+        loading={psLoading}
+        onClick={runPageSpeed}
+      />
+    );
+
+    if (psError) return (
+      <div style={{ textAlign: "center", padding: "72px 0" }}>
+        <AlertTriangle style={{ width: 40, height: 40, color: "#f87171", margin: "0 auto 16px" }} />
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: T1, marginBottom: 8 }}>Audit failed</h3>
+        <p style={{ color: T3, marginBottom: 24, maxWidth: 440, margin: "0 auto 24px" }}>{psError}</p>
+        <button onClick={runPageSpeed}
+          style={{ background: "#818cf8", color: "#fff", fontWeight: 700, padding: "10px 28px", borderRadius: 10, border: "none", cursor: "pointer" }}>
+          Retry
+        </button>
+      </div>
+    );
+
+    const SCORE_COLOR = (s: number) => s >= 90 ? "#15803d" : s >= 50 ? "#d97706" : "#dc2626";
+    const SCORE_BG    = (s: number) => s >= 90 ? "#f0fdf4" : s >= 50 ? "#fffbeb" : "#fef2f2";
+    const STATUS_COLOR: Record<string, string> = { good: "#15803d", "needs-improvement": "#d97706", poor: "#dc2626" };
+    const STATUS_BG:    Record<string, string> = { good: "#f0fdf4", "needs-improvement": "#fffbeb", poor: "#fef2f2" };
+
+    const vitals       = psData.vitals       || [];
+    const opportunities= psData.opportunities || [];
+    const mScore       = psData.mobile_score;
+    const dScore       = psData.desktop_score;
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+
+        {/* Score cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 480 }}>
+          {[
+            { label: "Mobile Score",  score: mScore, icon: "📱" },
+            { label: "Desktop Score", score: dScore, icon: "🖥️" },
+          ].map(({ label, score, icon }) => (
+            <div key={label} style={{ background: score != null ? SCORE_BG(score) : SURF,
+              border: `1px solid ${score != null ? SCORE_COLOR(score) + "40" : BORD}`,
+              borderRadius: 16, padding: "20px 24px", textAlign: "center" }}>
+              <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
+              <div style={{ fontSize: 40, fontWeight: 900, color: score != null ? SCORE_COLOR(score) : T3, lineHeight: 1 }}>
+                {score ?? "—"}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T2, marginTop: 6 }}>{label}</div>
+              <div style={{ fontSize: 11, color: T3, marginTop: 2 }}>
+                {score == null ? "N/A" : score >= 90 ? "Good" : score >= 50 ? "Needs Improvement" : "Poor"}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Core Web Vitals */}
+        <section>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: T1, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <Gauge style={{ width: 15, height: 15, color: "#818cf8" }} /> Core Web Vitals
+            <span style={{ fontSize: 11, color: T3, fontWeight: 400 }}>— Mobile · click row for AEO impact</span>
+          </h3>
+          <div style={{ border: `1px solid ${BORD}`, borderRadius: 14, overflow: "hidden" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 110px 110px 60px",
+              padding: "9px 16px", background: "#f3f4f6",
+              fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              <span>Metric</span><span>Value</span><span>Mobile</span><span>Desktop</span><span>Status</span>
+            </div>
+            {vitals.map((v: Record<string, string>, i: number) => {
+              const st = v.status as string || "poor";
+              return (
+                <div key={v.id} style={{ display: "flex", flexDirection: "column",
+                  borderTop: `1px solid ${BORD}`, background: i % 2 === 1 ? "rgba(0,0,0,0.012)" : BG }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 110px 110px 60px",
+                    padding: "11px 16px", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: T1 }}>{v.short}</span>
+                    <span style={{ fontSize: 12, color: T2 }}>{v.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: STATUS_COLOR[st] || T3 }}>{v.display}</span>
+                    <span style={{ fontSize: 13, color: T3 }}>{v.desktop_display || "—"}</span>
+                    <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 99,
+                      fontSize: 10, fontWeight: 700, background: STATUS_BG[st] || SURF,
+                      color: STATUS_COLOR[st] || T3, textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                      {st === "needs-improvement" ? "Avg" : st}
+                    </span>
+                  </div>
+                  {v.aeo_impact && (
+                    <div style={{ padding: "0 16px 10px 16px", paddingLeft: 156 }}>
+                      <div style={{ fontSize: 11, color: "#7c3aed", background: "#f5f3ff",
+                        border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px",
+                        display: "flex", gap: 6, alignItems: "flex-start" }}>
+                        <span style={{ flexShrink: 0 }}>🤖</span>
+                        <span><strong>AEO:</strong> {v.aeo_impact}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Opportunities */}
+        {opportunities.length > 0 && (
+          <section>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: T1, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+              <AlertTriangle style={{ width: 15, height: 15, color: "#d97706" }} /> Top Fixes
+              <span style={{ fontSize: 11, color: T3, fontWeight: 400 }}>— estimated time savings</span>
+            </h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {opportunities.map((op: Record<string, string | number>, i: number) => (
+                <div key={i} style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 12, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: T1 }}>{op.title}</div>
+                    {(op.savings_ms as number) > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#d97706", background: "#fffbeb",
+                        border: "1px solid #fde68a", padding: "2px 10px", borderRadius: 99, whiteSpace: "nowrap", flexShrink: 0 }}>
+                        −{((op.savings_ms as number) / 1000).toFixed(1)}s
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: T3, marginBottom: op.aeo_impact ? 8 : 0 }}>{op.description}</div>
+                  {op.aeo_impact && (
+                    <div style={{ fontSize: 11, color: "#7c3aed", background: "#f5f3ff",
+                      border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px",
+                      display: "flex", gap: 6 }}>
+                      <span>🤖</span><span><strong>AEO:</strong> {op.aeo_impact}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Re-run + download */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={runPageSpeed}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
+              borderRadius: 10, border: `1px solid ${BORD}`, background: SURF,
+              color: T2, fontSize: 13, cursor: "pointer" }}>
+            🔄 Re-run Audit
+          </button>
+          <button onClick={() => {
+            const rows = [
+              ["BrandEcho — Technical Audit", brand?.name || "", ""],
+              ["URL", psData.url, ""],
+              ["Mobile Score", mScore ?? "—", ""],
+              ["Desktop Score", dScore ?? "—", ""],
+              [""],
+              ["CORE WEB VITALS", "Mobile", "Desktop"],
+              ...vitals.map((v: Record<string, string>) => [v.label, v.display, v.desktop_display || "—"]),
+              [""],
+              ["TOP FIXES", "Savings (ms)", ""],
+              ...opportunities.map((op: Record<string, string | number>) => [op.title, op.savings_ms, op.aeo_impact]),
+            ];
+            const csv  = rows.map(r => r.map(String).map((cell: string) => `"${cell}"`).join(",")).join("\n");
+            const blob = new Blob([csv], { type: "text/csv" });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement("a");
+            a.href = url; a.download = `${brand?.name || "brandecho"}-technical-audit.csv`; a.click();
+            URL.revokeObjectURL(url);
+          }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
+            borderRadius: 10, border: "none", background: "#818cf8", color: "#fff",
+            fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            <FileText style={{ width: 15, height: 15 }} /> Download Audit (CSV)
+          </button>
+        </div>
+
+        <div style={{ fontSize: 11, color: T3, borderTop: `1px solid ${BORD}`, paddingTop: 12 }}>
+          Checked: {psData.url} · {new Date(psData.checked_at).toLocaleString()} · Powered by Google PageSpeed Insights
+        </div>
+      </div>
+    );
+  };
+
   const activeTab = TABS.find(t => t.id === tab)!;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -878,6 +1077,7 @@ export default function DashboardPage() {
         {tab === "visibility" && <VisibilityTab />}
         {tab === "briefs"     && <BriefsTab />}
         {tab === "gap"        && <GapTab />}
+        {tab === "technical"  && <TechnicalTab />}
       </main>
     </div>
   );
