@@ -61,10 +61,22 @@ export async function generatePersonasAndQueries(
   description: string
 ) {
   const raw = await claudeChat(
-    "You are a user research and SEO expert. Always return valid JSON only. No markdown.",
+    "You are a user research and AEO/GEO/SEO expert. Always return valid JSON only. No markdown.",
     `For "${brandName}" (${description}, ${industry}):
 1. Generate 3 diverse user personas
-2. For each persona, generate 5 targeted queries (mix of AEO, GEO, SEO)
+2. For each persona, generate 5 queries they would search BEFORE choosing ${brandName}
+
+CRITICAL QUERY RULES — violations make results useless:
+• NEVER include "${brandName}" in any query text — not even once
+• NEVER include any competitor brand name alone as the whole query
+• Queries must represent the PRE-DECISION stage: user is exploring the market, comparing options, or solving a problem — they have NOT committed to ${brandName} yet
+• Include these query types:
+  - "best [category/solution] for [use case/persona] in [location if relevant]"
+  - "[Competitor A] vs [Competitor B] — which is better for [use case]"
+  - "how to [solve the exact problem ${brandName} solves] without [pain point]"
+  - "is [category approach] safe/worth it for [persona type]"
+  - "[category] alternatives that [key differentiator]"
+• These are the queries where ${brandName} SHOULD appear in AI engine answers but currently might NOT — that is the optimization opportunity
 
 Return a single JSON object:
 {
@@ -81,7 +93,7 @@ Return a single JSON object:
       "income_level": "budget/mid/premium",
       "discovery_channel": "how they find brands",
       "queries": [
-        {"text":"query text","type":"aeo|geo|seo_longtail","intent":"awareness|consideration|purchase|comparison","revenue_proximity":50}
+        {"text":"query text — NO brand name here","type":"aeo|geo|seo_longtail","intent":"awareness|consideration|comparison","revenue_proximity":50}
       ]
     }
   ]

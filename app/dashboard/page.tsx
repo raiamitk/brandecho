@@ -2,24 +2,126 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TrendingUp, Users, MessageSquare, Building2, ArrowRight, Globe, Bot, Download, FileText, Eye, BarChart2, Sparkles } from "lucide-react";
-import SmartRecommendationsPanel from "@/components/SmartRecommendationsPanel";
+import {
+  Eye, Sparkles, BarChart2, TrendingUp, Users, MessageSquare,
+  Building2, Globe, Download, FileText, Zap,
+  CheckCircle, XCircle, ChevronDown, ChevronUp, Copy, Check,
+} from "lucide-react";
 import type { Brand, Persona, Query, Competitor, Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
 
-const A = "#00FF96";
-const BG = "#141414";
+// ── Theme ─────────────────────────────────────────────────────────────────────
+const A    = "#00FF96";
+const AT   = "#059669";
+const BG   = "#ffffff";
 const SURF = "#f9fafb";
 const BORD = "#e5e7eb";
+const T1   = "#111827";
+const T2   = "#374151";
+const T3   = "#6b7280";
 
+const PRIORITY_COLOR: Record<string, string> = {
+  high: "#dc2626", medium: "#d97706", low: "#15803d",
+};
+const TYPE_STYLE: Record<string, { bg: string; color: string }> = {
+  aeo:          { bg: "#ede9fe", color: "#6d28d9" },
+  geo:          { bg: "#dcfce7", color: "#15803d" },
+  seo:          { bg: "#dbeafe", color: "#1d4ed8" },
+  seo_longtail: { bg: "#dbeafe", color: "#1d4ed8" },
+};
+
+// ── Tab config ────────────────────────────────────────────────────────────────
+type TabId = "scan" | "visibility" | "briefs" | "gap";
+const TABS: { id: TabId; label: string; Icon: React.ElementType; accentColor: string; desc: string }[] = [
+  { id: "scan",       label: "AEO / GEO Scan",    Icon: Zap,       accentColor: A,         desc: "Personas, queries, competitors & smart recommendations from your brand scan" },
+  { id: "visibility", label: "AI Visibility",      Icon: Eye,       accentColor: A,         desc: "Score every query for AI citability — Claude + Gemini + web authority signals" },
+  { id: "briefs",     label: "Content Briefs",     Icon: Sparkles,  accentColor: "#fbbf24", desc: "AI-optimised content briefs for your top queries — ready to publish" },
+  { id: "gap",        label: "Competitor Gap",     Icon: BarChart2, accentColor: "#f87171", desc: "Queries where competitors appear in AI answers but your brand doesn't" },
+];
+
+// ── API response types ────────────────────────────────────────────────────────
+interface VisScore {
+  query_id: string; query_text: string; query_type: string;
+  revenue_proximity: number; claude_score: number; web_score: number;
+  gemini_check: boolean; gemini_available: boolean; combined_score: number; reason: string;
+}
+interface VisResult { overall_score: number; gemini_available: boolean; results: VisScore[]; }
+
+interface Brief {
+  query_id: string; query_text: string; recommended_title: string;
+  content_type: string; word_count: number; h2_sections: string[];
+  key_points: string[]; citation_hook: string; schema_markup: string; estimated_impact: string;
+}
+
+interface GapRow {
+  query_id: string; query_text: string; query_type: string;
+  brand_appears: boolean; competitors_appear: string[]; gap_type: string; opportunity: string;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function TypeBadge({ type }: { type: string }) {
+  const s = TYPE_STYLE[type] || TYPE_STYLE.seo;
+  return (
+    <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 99,
+      fontSize: 11, fontWeight: 600, background: s.bg, color: s.color, whiteSpace: "nowrap" }}>
+      {type === "seo_longtail" ? "SEO" : type.toUpperCase()}
+    </span>
+  );
+}
+
+function Spinner() {
+  return (
+    <div style={{ width: 32, height: 32, border: `3px solid ${BORD}`, borderTopColor: A,
+      borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
+  );
+}
+
+function RunCTA({ icon: Icon, title, desc, accentColor, label, loading, onClick }: {
+  icon: React.ElementType; title: string; desc: string; accentColor: string;
+  label: string; loading: boolean; onClick: () => void;
+}) {
+  return (
+    <div style={{ textAlign: "center", padding: "72px 0" }}>
+      <div style={{ width: 64, height: 64, borderRadius: 20, background: `${accentColor}18`,
+        display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+        <Icon style={{ width: 28, height: 28, color: accentColor }} />
+      </div>
+      <h3 style={{ fontSize: 20, fontWeight: 700, color: T1, marginBottom: 10 }}>{title}</h3>
+      <p style={{ color: T3, marginBottom: 28, maxWidth: 460, margin: "0 auto 28px", lineHeight: 1.6 }}>{desc}</p>
+      <button onClick={onClick} disabled={loading}
+        style={{ background: accentColor, color: "#111", fontWeight: 700, padding: "12px 36px",
+          borderRadius: 12, border: "none", cursor: loading ? "default" : "pointer", fontSize: 14,
+          opacity: loading ? 0.7 : 1, display: "inline-flex", alignItems: "center", gap: 8 }}>
+        {loading ? <><Spinner /><span style={{ marginLeft: 8 }}>Running…</span></> : label}
+      </button>
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
+  const [tab, setTab] = useState<TabId>("scan");
+
+  // Core data
   const [brand,       setBrand]       = useState<Brand | null>(null);
   const [personas,    setPersonas]    = useState<Persona[]>([]);
   const [queries,     setQueries]     = useState<Query[]>([]);
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [recs,        setRecs]        = useState<Recommendation[]>([]);
-  const [loading,     setLoading]     = useState(true);
+  const [coreLoading, setCoreLoading] = useState(true);
+
+  // Module data
+  const [visData,      setVisData]      = useState<VisResult | null>(null);
+  const [visLoading,   setVisLoading]   = useState(false);
+  const [briefsData,   setBriefsData]   = useState<Brief[]>([]);
+  const [briefsLoading,setBriefsLoading]= useState(false);
+  const [gapData,      setGapData]      = useState<GapRow[]>([]);
+  const [gapLoading,   setGapLoading]   = useState(false);
+
+  // UI state
+  const [expandedBrief, setExpandedBrief] = useState<string | null>(null);
+  const [copiedId,      setCopiedId]      = useState<string | null>(null);
 
   useEffect(() => {
     const brandId = sessionStorage.getItem("brand_id");
@@ -40,360 +142,683 @@ export default function DashboardPage() {
     if (qR.data) setQueries(qR.data);
     if (cR.data) setCompetitors(cR.data);
     if (rR.data) setRecs(rR.data);
-    setLoading(false);
+    setCoreLoading(false);
   };
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: BG }}>
-      <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: A, borderTopColor: "transparent" }} />
+  // ── API runners ─────────────────────────────────────────────────────────────
+  const runVisibility = async () => {
+    const brand_id = sessionStorage.getItem("brand_id");
+    if (!brand_id) return;
+    setVisLoading(true);
+    try {
+      const res  = await fetch("/api/visibility", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id }) });
+      const data = await res.json();
+      setVisData(data);
+    } catch (e) { console.error(e); }
+    setVisLoading(false);
+  };
+
+  const runBriefs = async () => {
+    const brand_id = sessionStorage.getItem("brand_id");
+    if (!brand_id) return;
+    setBriefsLoading(true);
+    try {
+      const res  = await fetch("/api/briefs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id }) });
+      const data = await res.json();
+      setBriefsData(data.briefs || []);
+    } catch (e) { console.error(e); }
+    setBriefsLoading(false);
+  };
+
+  const runGap = async () => {
+    const brand_id = sessionStorage.getItem("brand_id");
+    if (!brand_id) return;
+    setGapLoading(true);
+    try {
+      const res  = await fetch("/api/competitors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id }) });
+      const data = await res.json();
+      setGapData(data.gaps || []);
+    } catch (e) { console.error(e); }
+    setGapLoading(false);
+  };
+
+  // ── Copy brief ──────────────────────────────────────────────────────────────
+  const copyBrief = (b: Brief) => {
+    const text = [
+      `TITLE: ${b.recommended_title}`,
+      `TYPE: ${b.content_type} | SCHEMA: ${b.schema_markup} | WORDS: ${b.word_count}`,
+      `\nH2 SECTIONS:\n${b.h2_sections.map(h => `• ${h}`).join("\n")}`,
+      `\nKEY POINTS:\n${b.key_points.map(p => `• ${p}`).join("\n")}`,
+      `\nCITATION HOOK:\n${b.citation_hook}`,
+    ].join("\n");
+    navigator.clipboard.writeText(text);
+    setCopiedId(b.query_id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // ── PDF helpers ─────────────────────────────────────────────────────────────
+  const openPrint = (html: string) => {
+    const w = window.open("", "_blank")!;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 600);
+  };
+
+  const BASE_STYLE = `
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,Arial,sans-serif;padding:40px;color:#111;font-size:13px;line-height:1.6}
+    h1{font-size:26px;font-weight:800;margin:0 0 4px}
+    .sub{color:#6b7280;font-size:12px;padding-bottom:14px;border-bottom:3px solid #00FF96;margin-bottom:24px}
+    h2{font-size:13px;font-weight:700;margin:28px 0 10px;padding:7px 12px;background:#f0fdf4;border-left:4px solid #00FF96}
+    table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px}
+    th{background:#111;color:#fff;padding:7px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+    td{padding:7px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+    tr:nth-child(even) td{background:#fafafa}
+    .badge{display:inline-block;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:600}
+    .aeo{background:#ede9fe;color:#6d28d9}.geo{background:#dcfce7;color:#15803d}
+    .seo,.seo_longtail{background:#dbeafe;color:#1d4ed8}
+    footer{margin-top:40px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#aaa;text-align:center}
+    @media print{body{padding:20px}}`;
+
+  const downloadScanPDF = () => {
+    const personasHTML = personas.map(p => {
+      const pp = Array.isArray(p.pain_points) ? p.pain_points : [];
+      const gg = Array.isArray(p.goals)       ? p.goals       : [];
+      return `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:12px;background:#fafafa">
+        <strong style="font-size:14px">${p.name}</strong>
+        <span style="display:block;font-size:11px;color:#6b7280">${p.age_range || ""} · ${p.archetype || ""}</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#059669">Pain Points</div><ul style="margin:4px 0;padding-left:16px">${pp.map((x: string) => `<li>${x}</li>`).join("")}</ul></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#059669">Goals</div><ul style="margin:4px 0;padding-left:16px">${gg.map((x: string) => `<li>${x}</li>`).join("")}</ul></div>
+        </div>
+      </div>`;
+    }).join("");
+
+    const recsHTML = recs.map((r, i) => `
+      <div style="border:1px solid #e5e7eb;border-left:4px solid ${PRIORITY_COLOR[r.priority] || "#aaa"};border-radius:10px;padding:14px;margin-bottom:10px">
+        <strong>${i + 1}. ${r.title}</strong>
+        <span style="display:block;font-size:11px;color:#6b7280;margin:4px 0">${r.category.toUpperCase()} · ${r.priority} priority · <strong style="color:#059669">${r.projected_lift}</strong></span>
+        <p style="margin:6px 0;color:#374151;font-size:12px">${r.description}</p>
+        <span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600">${r.action_label}</span>
+      </div>`).join("");
+
+    openPrint(`<html><head><title>BrandEcho — ${brand?.name}</title><style>${BASE_STYLE}</style></head><body>
+      <h1>BrandEcho — ${brand?.name}</h1>
+      <div class="sub">Industry: ${brand?.industry} &nbsp;·&nbsp; Domain: ${brand?.domain} &nbsp;·&nbsp; ${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</div>
+      <p style="color:#374151;margin-bottom:24px">${brand?.description || ""}</p>
+      <h2>👤 User Personas</h2>${personasHTML}
+      <h2>🔍 Optimisation Queries (${queries.length})</h2>
+      <table><tr><th>Query</th><th>Type</th><th>Intent</th><th>Revenue %</th></tr>
+        ${queries.map(q => `<tr><td>${q.text}</td><td><span class="badge ${q.type}">${q.type==="seo_longtail"?"SEO":q.type.toUpperCase()}</span></td><td style="text-transform:capitalize">${q.intent}</td><td style="font-weight:700;color:#059669">${q.revenue_proximity}%</td></tr>`).join("")}
+      </table>
+      <h2>🏢 Competitors</h2>
+      <table><tr><th>Name</th><th>Domain</th><th>Type</th></tr>
+        ${competitors.map(c => `<tr><td style="font-weight:600">${c.name}</td><td style="color:#6b7280">${c.domain}</td><td>${c.type==="direct"?"Direct":"Substitute"}</td></tr>`).join("")}
+      </table>
+      <h2>💡 Recommendations</h2>${recsHTML}
+      <footer>Generated by BrandEcho · Powered by Claude AI · ${new Date().toLocaleString()}</footer>
+    </body></html>`);
+  };
+
+  const downloadVisibilityPDF = () => {
+    if (!visData) return;
+    openPrint(`<html><head><title>AI Visibility — ${brand?.name}</title><style>${BASE_STYLE}</style></head><body>
+      <h1>AI Visibility Report — ${brand?.name}</h1>
+      <div class="sub">Overall Score: <strong>${visData.overall_score}/100</strong> &nbsp;·&nbsp; ${visData.results?.length || 0} queries scored &nbsp;·&nbsp; ${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</div>
+      <table>
+        <tr><th>Query</th><th>Claude</th><th>Gemini</th><th>Web</th><th>Combined</th></tr>
+        ${(visData.results || []).map(s => `<tr>
+          <td>${s.query_text}</td>
+          <td style="text-align:center">${s.claude_score}</td>
+          <td style="text-align:center">${s.gemini_available ? (s.gemini_check ? "✓ Cited" : "✗ Missing") : "—"}</td>
+          <td style="text-align:center">${s.web_score}</td>
+          <td style="text-align:center;font-weight:700;color:${s.combined_score>=70?"#15803d":s.combined_score>=40?"#d97706":"#dc2626"}">${s.combined_score}</td>
+        </tr>`).join("")}
+      </table>
+      <footer>Generated by BrandEcho · Powered by Claude AI · ${new Date().toLocaleString()}</footer>
+    </body></html>`);
+  };
+
+  const downloadBriefsPDF = () => {
+    if (!briefsData.length) return;
+    const html = briefsData.map(b => `
+      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:18px;margin-bottom:16px;background:#fafafa">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#059669;margin-bottom:6px">${b.content_type} · ${b.schema_markup} · ~${b.word_count} words · <span style="color:${b.estimated_impact==="high"?"#dc2626":b.estimated_impact==="medium"?"#d97706":"#15803d"}">${b.estimated_impact} impact</span></div>
+        <h3 style="font-size:15px;margin:0 0 10px;color:#111">${b.recommended_title}</h3>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6b7280;margin-bottom:4px">H2 Sections</div>
+        <ul style="margin:0 0 10px;padding-left:18px">${b.h2_sections.map(h => `<li style="margin-bottom:2px">${h}</li>`).join("")}</ul>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6b7280;margin-bottom:4px">Key Points</div>
+        <ul style="margin:0 0 10px;padding-left:18px">${b.key_points.map(p => `<li style="margin-bottom:2px">${p}</li>`).join("")}</ul>
+        <div style="background:#f0fdf4;border-left:3px solid #00FF96;padding:8px 12px;border-radius:4px;font-size:12px;color:#374151"><strong>Citation Hook:</strong> ${b.citation_hook}</div>
+      </div>`).join("");
+    openPrint(`<html><head><title>Content Briefs — ${brand?.name}</title><style>${BASE_STYLE}</style></head><body>
+      <h1>Content Briefs — ${brand?.name}</h1>
+      <div class="sub">Top ${briefsData.length} queries · ${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</div>
+      ${html}
+      <footer>Generated by BrandEcho · Powered by Claude AI · ${new Date().toLocaleString()}</footer>
+    </body></html>`);
+  };
+
+  const downloadGapPDF = () => {
+    if (!gapData.length) return;
+    openPrint(`<html><head><title>Competitor Gap — ${brand?.name}</title><style>${BASE_STYLE}</style></head><body>
+      <h1>Competitor Gap Report — ${brand?.name}</h1>
+      <div class="sub">${gapData.filter(g => !g.brand_appears).length} gap queries identified · ${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</div>
+      <table>
+        <tr><th>Query</th><th>Brand</th><th>Competitors</th><th>Gap</th><th>Opportunity</th></tr>
+        ${gapData.map(g => `<tr>
+          <td>${g.query_text}</td>
+          <td style="text-align:center;color:${g.brand_appears?"#15803d":"#dc2626"}">${g.brand_appears?"✓":"✗"}</td>
+          <td>${g.competitors_appear.join(", ") || "—"}</td>
+          <td style="font-weight:600;color:${g.gap_type==="missing"?"#dc2626":g.gap_type==="weak"?"#d97706":"#15803d"}">${g.gap_type}</td>
+          <td style="font-size:11px;color:#374151">${g.opportunity}</td>
+        </tr>`).join("")}
+      </table>
+      <footer>Generated by BrandEcho · Powered by Claude AI · ${new Date().toLocaleString()}</footer>
+    </body></html>`);
+  };
+
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (coreLoading) return (
+    <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <Spinner />
     </div>
   );
 
-  const highRevQueries = queries.filter(q => q.revenue_proximity >= 70);
+  // ── Tab renders ────────────────────────────────────────────────────────────
 
-  // ── CSV Download ──────────────────────────────────────────────────────────
-  const downloadCSV = () => {
-    const rows = [
-      ["BrandEcho Report —", brand?.name || "", "", ""],
-      [""], ["QUERIES", "", "", ""],
-      ["Query", "Type", "Intent", "Revenue Proximity (%)"],
-      ...queries.map(q => [q.text, q.type, q.intent, q.revenue_proximity]),
-      [""], ["COMPETITORS", "", "", ""],
-      ["Competitor", "Domain", "Type", ""],
-      ...competitors.map(c => [c.name, c.domain, c.type, ""]),
-      [""], ["RECOMMENDATIONS", "", "", ""],
-      ["Title", "Category", "Priority", "Projected Lift"],
-      ...recs.map(r => [r.title, r.category, r.priority, r.projected_lift]),
-    ];
-    const csv  = rows.map(r => r.map(String).map(v => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url; a.download = `${brand?.name || "brandecho"}-report.csv`; a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // ── PDF Download (browser print — zero API tokens) ───────────────────────
-  const downloadPDF = () => {
-    const personasHTML = personas.map(p => `
-      <div class="persona-card">
-        <div class="persona-header">
-          <span class="persona-initial">${p.name.charAt(0)}</span>
-          <div>
-            <strong style="font-size:14px">${p.name}</strong>
-            <span class="meta">${p.age_range || ""} · ${p.archetype || ""} · ${p.occupation || ""}</span>
-          </div>
-        </div>
-        <div class="two-col">
-          <div>
-            <div class="label">Pain Points</div>
-            <ul>${(p.pain_points || []).map((pt: string) => `<li>${pt}</li>`).join("")}</ul>
-          </div>
-          <div>
-            <div class="label">Goals</div>
-            <ul>${(p.goals || []).map((g: string) => `<li>${g}</li>`).join("")}</ul>
-          </div>
-        </div>
-        <div class="label" style="margin-top:8px">AI Tools Used</div>
-        <p style="margin:2px 0 6px">${(p.ai_tools_used || []).join(", ") || "—"}</p>
-        <div class="label">Query Style</div>
-        <p style="margin:2px 0">${p.query_style || "—"}</p>
-      </div>`).join("");
-
-    const recsHTML = recs.map((r, i) => `
-      <div class="rec-card p-${r.priority}">
-        <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:6px">
-          <span class="num">${i + 1}</span>
-          <div style="flex:1">
-            <strong>${r.title}</strong>
-            <span style="display:block;font-size:11px;color:#6b7280;margin-top:2px">
-              ${r.category.toUpperCase()} · <span class="${r.priority}">${r.priority} priority</span> · <strong style="color:#059669">${r.projected_lift}</strong>
-            </span>
-          </div>
-        </div>
-        <p style="margin:0 0 8px;color:#374151;font-size:12px">${r.description}</p>
-        <span class="action">${r.action_label}</span>
-      </div>`).join("");
-
-    const content = `<html><head><title>BrandEcho — ${brand?.name}</title>
-    <style>
-      *{box-sizing:border-box}
-      body{font-family:-apple-system,Arial,sans-serif;padding:40px;color:#111;font-size:13px;line-height:1.6}
-      h1{font-size:28px;font-weight:800;margin:0 0 4px}
-      .sub{color:#6b7280;font-size:13px;padding-bottom:14px;border-bottom:3px solid #00FF96;margin-bottom:24px}
-      .brand-desc{color:#374151;margin-bottom:28px;font-size:13px;padding:12px;background:#f0fdf4;border-radius:8px}
-      h2{font-size:14px;font-weight:700;margin:28px 0 12px;padding:7px 12px;background:#f0fdf4;border-left:4px solid #00FF96;color:#111}
-      table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px}
-      th{background:#111;color:#fff;padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-      td{padding:8px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}
-      tr:nth-child(even) td{background:#fafafa}
-      .badge{display:inline-block;padding:2px 7px;border-radius:99px;font-size:11px;font-weight:600}
-      .aeo{background:#ede9fe;color:#6d28d9}.geo{background:#dcfce7;color:#15803d}
-      .seo,.seo_longtail{background:#dbeafe;color:#1d4ed8}
-      .high{color:#dc2626;font-weight:700}.medium{color:#d97706;font-weight:600}.low{color:#15803d}
-      .persona-card{border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:12px;background:#fafafa}
-      .persona-header{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-      .persona-initial{width:38px;height:38px;border-radius:10px;background:#00FF96;color:#111;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
-      .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-      .meta{display:block;color:#6b7280;font-size:11px;margin-top:2px}
-      .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#059669;margin:4px 0 2px}
-      ul{margin:0;padding-left:16px} li{margin-bottom:3px;color:#374151}
-      .rec-card{border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:10px}
-      .p-high{border-left:4px solid #dc2626}.p-medium{border-left:4px solid #d97706}.p-low{border-left:4px solid #15803d}
-      .num{width:28px;height:28px;border-radius:8px;background:#00FF96;color:#111;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
-      .action{display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600}
-      footer{margin-top:40px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:11px;color:#aaa;text-align:center}
-      @media print{body{padding:20px}}
-    </style></head><body>
-
-    <h1>BrandEcho Report — ${brand?.name}</h1>
-    <div class="sub">Industry: ${brand?.industry} &nbsp;·&nbsp; Domain: ${brand?.domain} &nbsp;·&nbsp; Generated: ${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</div>
-    <div class="brand-desc">${brand?.description || ""}</div>
-
-    <h2>👤 User Personas (${personas.length})</h2>
-    ${personasHTML}
-
-    <h2>🔍 Queries (${queries.length} total)</h2>
-    <table>
-      <tr><th>Query</th><th style="width:70px">Type</th><th style="width:110px">Intent</th><th style="width:80px">Revenue %</th></tr>
-      ${queries.map(q => `<tr>
-        <td>${q.text}</td>
-        <td><span class="badge ${q.type}">${q.type==="seo_longtail"?"SEO":q.type.toUpperCase()}</span></td>
-        <td style="text-transform:capitalize">${q.intent}</td>
-        <td style="font-weight:700;color:#059669">${q.revenue_proximity}%</td>
-      </tr>`).join("")}
-    </table>
-
-    <h2>🏢 Competitors (${competitors.length} found)</h2>
-    <table>
-      <tr><th>Name</th><th>Domain</th><th style="width:140px">Type</th><th>Why Relevant</th></tr>
-      ${competitors.map(c => `<tr>
-        <td style="font-weight:600">${c.name}</td>
-        <td style="color:#6b7280">${c.domain}</td>
-        <td>${c.type==="direct"?"Direct Competitor":"Category Substitute"}</td>
-        <td style="color:#6b7280">${c.why||""}</td>
-      </tr>`).join("")}
-    </table>
-
-    <h2>💡 Smart Recommendations (${recs.length})</h2>
-    ${recsHTML}
-
-    <footer>Generated by BrandEcho &nbsp;·&nbsp; Powered by Claude AI &nbsp;·&nbsp; ${new Date().toLocaleString()}</footer>
-    </body></html>`;
-
-    const w = window.open("", "_blank")!;
-    w.document.write(content);
-    w.document.close();
-    w.focus();
-    setTimeout(() => { w.print(); }, 600);
-  };
-
-  return (
-    <div className="min-h-screen flex" style={{ background: BG }}>
-      <div className="flex-1 pr-80">
-
-        {/* Header */}
-        <header className="sticky top-0 z-30 backdrop-blur-sm border-b px-6 py-4 flex items-center justify-between"
-          style={{ background: "rgba(255,255,255,0.92)", borderColor: BORD }}>
-          <div className="flex items-center gap-4">
-            <img src="/logo.svg" alt="BrandEcho" style={{ height: "30px", width: "auto" }} />
-            <div className="h-5 w-px" style={{ background: BORD }} />
-            <div>
-              <span className="text-gray-900 font-semibold">{brand?.name}</span>
-              <span className="text-sm ml-2" style={{ color: "#555" }}>{brand?.industry}</span>
+  // SCAN TAB ─────────────────────────────────────────────────────────────────
+  const ScanTab = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+      {/* KPIs */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
+        {[
+          { label: "Optimisation Queries", value: queries.length,                                  Icon: MessageSquare },
+          { label: "Competitors Tracked",  value: competitors.length,                              Icon: Building2 },
+          { label: "High-Revenue Queries", value: queries.filter(q => q.revenue_proximity >= 70).length, Icon: TrendingUp },
+          { label: "Recommendations",      value: recs.length,                                     Icon: Zap },
+        ].map(({ label, value, Icon }) => (
+          <div key={label} style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, padding: 20 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(0,255,150,0.1)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+              <Icon style={{ width: 20, height: 20, color: A }} />
             </div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: T1, marginBottom: 4 }}>{value}</div>
+            <div style={{ fontSize: 13, color: T3 }}>{label}</div>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={downloadCSV}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border"
-              style={{ borderColor: BORD, color: "#555", background: SURF }}
-              onMouseEnter={e => (e.currentTarget.style.color = "#111")}
-              onMouseLeave={e => (e.currentTarget.style.color = "#555")}>
-              <Download className="w-4 h-4" /> CSV
-            </button>
-            <button onClick={downloadPDF}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-all"
-              style={{ background: A, color: BG }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#00cc78")}
-              onMouseLeave={e => (e.currentTarget.style.background = A)}>
-              <FileText className="w-4 h-4" /> Download PDF
-            </button>
-            <nav className="flex items-center gap-1 ml-2">
-              {[{ label: "Overview", href: "/dashboard" }, { label: "Personas", href: "/personas" }, { label: "Queries", href: "/queries" }]
-                .map(({ label, href }) => (
-                  <button key={href} onClick={() => router.push(href)}
-                    className="px-4 py-2 rounded-lg text-sm transition-colors"
-                    style={{ background: href === "/dashboard" ? A : "transparent", color: href === "/dashboard" ? BG : "#888" }}>
-                    {label}
-                  </button>
+        ))}
+      </div>
+
+      {/* Personas */}
+      <section>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: T1, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <Users style={{ width: 16, height: 16, color: A }} /> User Personas
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+          {personas.map(p => {
+            const pp = Array.isArray(p.pain_points) ? p.pain_points : [];
+            const gg = Array.isArray(p.goals)       ? p.goals       : [];
+            return (
+              <div key={p.id} style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, padding: 20 }}>
+                <div style={{ width: 42, height: 42, borderRadius: "50%", background: A, color: "#111", fontWeight: 800, fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                  {p.name.charAt(0)}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T1, marginBottom: 2 }}>{p.name}</div>
+                <div style={{ fontSize: 12, color: T3, marginBottom: 14 }}>{p.age_range} · {p.archetype}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: AT, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Pain Points</div>
+                {pp.slice(0, 2).map((pt: string, i: number) => (
+                  <div key={i} style={{ fontSize: 12, color: T2, marginBottom: 2 }}>• {pt}</div>
                 ))}
-            </nav>
-          </div>
-        </header>
-
-        <main className="px-6 py-8 space-y-8 animate-fade-in">
-
-          {/* KPI cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { label: "Total Queries",        value: queries.length,        icon: MessageSquare },
-              { label: "AI Engine Coverage",   value: "8",                   icon: Bot },
-              { label: "Competitors Found",    value: competitors.length,    icon: Building2 },
-              { label: "High-Revenue Queries", value: highRevQueries.length, icon: TrendingUp },
-            ].map(({ label, value, icon: Icon }) => (
-              <div key={label} className="rounded-2xl p-5 card-lift border" style={{ background: SURF, borderColor: BORD }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: "rgba(0,255,150,0.1)" }}>
-                  <Icon className="w-5 h-5" style={{ color: A }} />
-                </div>
-                <div className="text-3xl font-bold text-gray-900 mb-1">{value}</div>
-                <div className="text-sm text-gray-500">{label}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: AT, textTransform: "uppercase", letterSpacing: "0.5px", marginTop: 10, marginBottom: 4 }}>Goals</div>
+                {gg.slice(0, 1).map((g: string, i: number) => (
+                  <div key={i} style={{ fontSize: 12, color: T2 }}>• {g}</div>
+                ))}
               </div>
-            ))}
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Queries */}
+      <section>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: T1, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+          <MessageSquare style={{ width: 16, height: 16, color: A }} /> Optimisation Queries
+        </h2>
+        <p style={{ fontSize: 13, color: T3, marginBottom: 16 }}>
+          Pre-decision queries — these are the searches where {brand?.name} should appear but might not yet.
+        </p>
+        <div style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 74px 120px 90px", padding: "10px 20px",
+            background: "#f3f4f6", fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            <span>Query</span><span>Type</span><span>Intent</span><span>Revenue</span>
           </div>
-
-          {/* Personas */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <Users className="w-4 h-4" style={{ color: A }} /> Personas
-              </h2>
-              <button onClick={() => router.push("/personas")} className="text-sm flex items-center gap-1" style={{ color: A }}>
-                View all <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {personas.slice(0, 3).map(p => (
-                <div key={p.id} className="rounded-2xl p-5 card-lift border" style={{ background: SURF, borderColor: BORD }}>
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-black font-bold text-lg mb-3" style={{ background: A }}>
-                    {p.name.charAt(0)}
+          {queries.map((q, i) => {
+            const ts = TYPE_STYLE[q.type] || TYPE_STYLE.seo;
+            return (
+              <div key={q.id} style={{ display: "grid", gridTemplateColumns: "1fr 74px 120px 90px",
+                padding: "12px 20px", borderTop: `1px solid ${BORD}`, alignItems: "center",
+                background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : BG }}>
+                <span style={{ fontSize: 13, color: T1 }}>{q.text}</span>
+                <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 99,
+                  fontSize: 11, fontWeight: 600, background: ts.bg, color: ts.color, justifySelf: "start" }}>
+                  {q.type === "seo_longtail" ? "SEO" : q.type.toUpperCase()}
+                </span>
+                <span style={{ fontSize: 12, color: T2, textTransform: "capitalize" }}>{q.intent}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ height: 6, flex: 1, borderRadius: 99, background: BORD, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${q.revenue_proximity}%`, background: A, borderRadius: 99 }} />
                   </div>
-                  <h3 className="font-semibold text-gray-900 text-sm mb-1">{p.name}</h3>
-                  <p className="text-xs text-gray-500 mb-3">{p.age_range} · {p.archetype}</p>
-                  {p.pain_points?.slice(0, 2).map((pt, j) => (
-                    <p key={j} className="text-xs text-gray-500">• {pt}</p>
-                  ))}
+                  <span style={{ fontSize: 12, fontWeight: 700, color: AT, minWidth: 28 }}>{q.revenue_proximity}%</span>
                 </div>
-              ))}
-            </div>
-          </section>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
-          {/* Competitors */}
-          <section>
-            <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2 mb-4">
-              <Building2 className="w-4 h-4" style={{ color: A }} /> Competitors
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {competitors.map(c => (
-                <div key={c.id} className="rounded-xl p-4 card-lift flex items-center gap-3 border" style={{ background: SURF, borderColor: BORD }}>
-                  <Globe className="w-4 h-4 flex-shrink-0" style={{ color: A }} />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{c.name}</p>
-                    <p className="text-xs text-gray-400 truncate">{c.domain}</p>
-                    <span className="text-xs" style={{ color: c.type === "direct" ? "#fb923c" : "#a78bfa" }}>
-                      {c.type === "direct" ? "Direct" : "Substitute"}
+      {/* Competitors */}
+      <section>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: T1, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <Building2 style={{ width: 16, height: 16, color: A }} /> Competitors
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+          {competitors.map(c => (
+            <div key={c.id} style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 14, padding: 16, display: "flex", alignItems: "center", gap: 12 }}>
+              <Globe style={{ width: 16, height: 16, color: A, flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: T1 }}>{c.name}</div>
+                <div style={{ fontSize: 12, color: T3 }}>{c.domain}</div>
+                <div style={{ fontSize: 11, marginTop: 2, color: c.type === "direct" ? "#fb923c" : "#a78bfa" }}>
+                  {c.type === "direct" ? "Direct Competitor" : "Category Substitute"}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Recommendations */}
+      <section>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: T1, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <TrendingUp style={{ width: 16, height: 16, color: A }} /> Smart Recommendations
+        </h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {recs.map((r, i) => (
+            <div key={r.id} style={{ background: SURF, border: `1px solid ${BORD}`,
+              borderLeft: `4px solid ${PRIORITY_COLOR[r.priority] || "#aaa"}`,
+              borderRadius: 14, padding: 20 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: A, color: "#111",
+                  fontWeight: 800, fontSize: 13, display: "flex", alignItems: "center",
+                  justifyContent: "center", flexShrink: 0 }}>
+                  {i + 1}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: T1 }}>{r.title}</div>
+                  <div style={{ fontSize: 12, color: T3, marginTop: 3 }}>
+                    {r.category.toUpperCase()} ·&nbsp;
+                    <span style={{ color: PRIORITY_COLOR[r.priority] }}>{r.priority} priority</span>
+                    &nbsp;·&nbsp;<strong style={{ color: AT }}>{r.projected_lift}</strong>
+                  </div>
+                </div>
+              </div>
+              <p style={{ fontSize: 13, color: T2, margin: "0 0 12px" }}>{r.description}</p>
+              <span style={{ display: "inline-block", background: "#f0fdf4", border: "1px solid #bbf7d0",
+                color: "#15803d", padding: "4px 14px", borderRadius: 99, fontSize: 12, fontWeight: 600 }}>
+                {r.action_label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Download button */}
+      <button onClick={downloadScanPDF}
+        style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8,
+          background: A, color: "#111", fontWeight: 700, padding: "11px 24px", borderRadius: 10,
+          border: "none", cursor: "pointer", fontSize: 13 }}>
+        <FileText style={{ width: 16, height: 16 }} /> Download Full Scan Report (PDF)
+      </button>
+    </div>
+  );
+
+  // VISIBILITY TAB ───────────────────────────────────────────────────────────
+  const VisibilityTab = () => {
+    if (!visData) return (
+      <RunCTA
+        icon={Eye} accentColor={A}
+        title="AI Visibility Checker"
+        desc="Score each query 0–100 for how likely AI engines (ChatGPT, Perplexity, Gemini) are to cite your brand. Uses Claude prediction + Gemini live check + web authority signals."
+        label="Run Visibility Analysis"
+        loading={visLoading}
+        onClick={runVisibility}
+      />
+    );
+    const scores = visData.results || [];
+    const strong = scores.filter(s => s.combined_score >= 70).length;
+    const gaps   = scores.filter(s => s.combined_score < 40).length;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        {/* Score cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
+          {[
+            { label: "Overall Score",    value: `${visData.overall_score}/100` },
+            { label: "Queries Scored",   value: scores.length },
+            { label: "Strong Visibility",value: strong },
+            { label: "Gap Queries",      value: gaps },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, padding: 20 }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: T1, marginBottom: 4 }}>{value}</div>
+              <div style={{ fontSize: 13, color: T3 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Scores table */}
+        <div style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 110px 90px 130px",
+            padding: "10px 20px", background: "#f3f4f6",
+            fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            <span>Query</span><span>Claude</span><span>Gemini</span><span>Web</span><span>Combined</span>
+          </div>
+          {scores.map((s, i) => (
+            <div key={s.query_id} style={{ display: "grid", gridTemplateColumns: "1fr 90px 110px 90px 130px",
+              padding: "12px 20px", borderTop: `1px solid ${BORD}`, alignItems: "center",
+              background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : BG }}>
+              <span style={{ fontSize: 13, color: T1 }}>{s.query_text}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: T1 }}>{s.claude_score}/100</span>
+              <span>
+                {!s.gemini_available
+                  ? <span style={{ fontSize: 12, color: T3 }}>—</span>
+                  : s.gemini_check
+                    ? <span style={{ fontSize: 12, color: "#15803d", display: "flex", alignItems: "center", gap: 4 }}><CheckCircle style={{ width: 13, height: 13 }} /> Cited</span>
+                    : <span style={{ fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}><XCircle style={{ width: 13, height: 13 }} /> Missing</span>
+                }
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: T1 }}>{s.web_score}/100</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ flex: 1, height: 6, borderRadius: 99, background: BORD, overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 99,
+                    width: `${s.combined_score}%`,
+                    background: s.combined_score >= 70 ? A : s.combined_score >= 40 ? "#fbbf24" : "#f87171" }} />
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: T1, minWidth: 28 }}>{s.combined_score}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={downloadVisibilityPDF}
+          style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8,
+            background: A, color: "#111", fontWeight: 700, padding: "11px 24px",
+            borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13 }}>
+          <FileText style={{ width: 16, height: 16 }} /> Download Visibility Report (PDF)
+        </button>
+      </div>
+    );
+  };
+
+  // BRIEFS TAB ───────────────────────────────────────────────────────────────
+  const BriefsTab = () => {
+    if (!briefsData.length) return (
+      <RunCTA
+        icon={Sparkles} accentColor="#fbbf24"
+        title="Content Brief Generator"
+        desc="Auto-generate fully structured content briefs for your top 5 revenue queries — titles, H2 sections, key points, citation hooks, and schema markup. Ready to hand to a writer."
+        label="Generate Content Briefs"
+        loading={briefsLoading}
+        onClick={runBriefs}
+      />
+    );
+    const IMPACT_COLOR: Record<string, string> = { high: "#dc2626", medium: "#d97706", low: "#15803d" };
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {briefsData.map(b => {
+          const open = expandedBrief === b.query_id;
+          return (
+            <div key={b.query_id} style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
+              {/* Brief header — always visible */}
+              <button onClick={() => setExpandedBrief(open ? null : b.query_id)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 16,
+                  padding: "18px 20px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: IMPACT_COLOR[b.estimated_impact] || T3,
+                      textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      {b.estimated_impact} impact
+                    </span>
+                    <span style={{ fontSize: 11, color: T3 }}>·</span>
+                    <span style={{ fontSize: 11, color: T3 }}>{b.content_type}</span>
+                    <span style={{ fontSize: 11, color: T3 }}>·</span>
+                    <span style={{ fontSize: 11, color: T3 }}>~{b.word_count} words</span>
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: T1, marginBottom: 4 }}>{b.recommended_title}</div>
+                  <div style={{ fontSize: 12, color: T3 }}>Query: {b.query_text}</div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button onClick={e => { e.stopPropagation(); copyBrief(b); }}
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
+                      borderRadius: 8, border: `1px solid ${BORD}`, background: BG,
+                      color: copiedId === b.query_id ? "#15803d" : T3, fontSize: 12, cursor: "pointer" }}>
+                    {copiedId === b.query_id
+                      ? <><Check style={{ width: 13, height: 13 }} /> Copied!</>
+                      : <><Copy style={{ width: 13, height: 13 }} /> Copy</>}
+                  </button>
+                  {open
+                    ? <ChevronUp  style={{ width: 20, height: 20, color: T3 }} />
+                    : <ChevronDown style={{ width: 20, height: 20, color: T3 }} />}
+                </div>
+              </button>
+
+              {/* Expanded content */}
+              {open && (
+                <div style={{ padding: "0 20px 20px", borderTop: `1px solid ${BORD}` }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 16 }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: AT, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>H2 Sections</div>
+                      {b.h2_sections.map((h, i) => (
+                        <div key={i} style={{ fontSize: 13, color: T2, padding: "6px 0", borderBottom: `1px solid ${BORD}` }}>
+                          {i + 1}. {h}
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: AT, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Key Points to Cover</div>
+                      {b.key_points.map((pt, i) => (
+                        <div key={i} style={{ fontSize: 13, color: T2, padding: "6px 0", borderBottom: `1px solid ${BORD}` }}>
+                          • {pt}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 16, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "12px 16px" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: AT, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>AI Citation Hook</div>
+                    <div style={{ fontSize: 13, color: T2 }}>{b.citation_hook}</div>
+                  </div>
+                  <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                    <span style={{ fontSize: 11, background: "#ede9fe", color: "#6d28d9", padding: "3px 10px", borderRadius: 99, fontWeight: 600 }}>
+                      Schema: {b.schema_markup}
                     </span>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
-          </section>
+          );
+        })}
 
-          {/* Queries preview */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" style={{ color: A }} /> Query Preview
-              </h2>
-              <button onClick={() => router.push("/queries")} className="text-sm flex items-center gap-1" style={{ color: A }}>
-                View all {queries.length} <ArrowRight className="w-4 h-4" />
-              </button>
+        <button onClick={downloadBriefsPDF}
+          style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8,
+            background: "#fbbf24", color: "#111", fontWeight: 700, padding: "11px 24px",
+            borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13 }}>
+          <FileText style={{ width: 16, height: 16 }} /> Download All Briefs (PDF)
+        </button>
+      </div>
+    );
+  };
+
+  // GAP TAB ──────────────────────────────────────────────────────────────────
+  const GapTab = () => {
+    if (!gapData.length) return (
+      <RunCTA
+        icon={BarChart2} accentColor="#f87171"
+        title="Competitor Gap Analysis"
+        desc="See exactly which queries competitors appear in AI engine answers — but your brand doesn't. Each gap comes with a specific action to close it."
+        label="Analyze Competitor Gaps"
+        loading={gapLoading}
+        onClick={runGap}
+      />
+    );
+    const GAP_COLOR: Record<string, { bg: string; color: string }> = {
+      missing: { bg: "#fef2f2", color: "#dc2626" },
+      weak:    { bg: "#fffbeb", color: "#d97706" },
+      strong:  { bg: "#f0fdf4", color: "#15803d" },
+    };
+    const missingCount = gapData.filter(g => g.gap_type === "missing").length;
+    const weakCount    = gapData.filter(g => g.gap_type === "weak").length;
+    const strongCount  = gapData.filter(g => g.gap_type === "strong").length;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        {/* Summary chips */}
+        <div style={{ display: "flex", gap: 12 }}>
+          {[
+            { label: "Critical Gaps",     value: missingCount, ...GAP_COLOR.missing },
+            { label: "Weak Presence",     value: weakCount,    ...GAP_COLOR.weak },
+            { label: "Strong Positions",  value: strongCount,  ...GAP_COLOR.strong },
+          ].map(({ label, value, bg, color }) => (
+            <div key={label} style={{ background: bg, border: `1px solid ${color}40`, borderRadius: 12, padding: "12px 20px" }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
+              <div style={{ fontSize: 12, color, fontWeight: 600 }}>{label}</div>
             </div>
-            <div className="rounded-2xl overflow-hidden border" style={{ background: SURF, borderColor: BORD }}>
-              {queries.slice(0, 5).map(q => (
-                <div key={q.id} className="px-5 py-3 flex items-center gap-4 border-b" style={{ borderColor: BORD }}>
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
-                    style={{ background: "rgba(0,255,150,0.1)", color: A }}>
-                    {q.type === "seo_longtail" ? "SEO" : q.type.toUpperCase()}
-                  </span>
-                  <p className="text-sm text-gray-700 flex-1 truncate">{q.text}</p>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <div className="h-1.5 w-14 rounded-full overflow-hidden" style={{ background: BORD }}>
-                      <div className="h-full rounded-full" style={{ width: `${q.revenue_proximity}%`, background: A }} />
-                    </div>
-                    <span className="text-xs text-gray-400">{q.revenue_proximity}%</span>
-                  </div>
+          ))}
+        </div>
+
+        {/* Gap table */}
+        <div style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 160px 90px 1fr",
+            padding: "10px 20px", background: "#f3f4f6",
+            fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            <span>Query</span><span>Brand</span><span>Competitors Seen</span><span>Gap Type</span><span>Opportunity</span>
+          </div>
+          {gapData.map((g, i) => {
+            const gs = GAP_COLOR[g.gap_type] || GAP_COLOR.strong;
+            return (
+              <div key={g.query_id} style={{ display: "grid", gridTemplateColumns: "1fr 80px 160px 90px 1fr",
+                padding: "12px 20px", borderTop: `1px solid ${BORD}`, alignItems: "start",
+                background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : BG }}>
+                <div>
+                  <div style={{ fontSize: 13, color: T1, marginBottom: 2 }}>{g.query_text}</div>
+                  <TypeBadge type={g.query_type} />
                 </div>
-              ))}
+                <span style={{ fontSize: 18 }}>{g.brand_appears ? "✅" : "❌"}</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {g.competitors_appear.length
+                    ? g.competitors_appear.map((c, ci) => (
+                        <span key={ci} style={{ fontSize: 11, background: "#fef2f2", color: "#dc2626",
+                          padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}>{c}</span>
+                      ))
+                    : <span style={{ fontSize: 12, color: T3 }}>None</span>}
+                </div>
+                <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 99,
+                  fontSize: 11, fontWeight: 700, background: gs.bg, color: gs.color, whiteSpace: "nowrap" }}>
+                  {g.gap_type}
+                </span>
+                <span style={{ fontSize: 12, color: T2, lineHeight: 1.5 }}>{g.opportunity}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <button onClick={downloadGapPDF}
+          style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8,
+            background: "#f87171", color: "#fff", fontWeight: 700, padding: "11px 24px",
+            borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13 }}>
+          <FileText style={{ width: 16, height: 16 }} /> Download Gap Report (PDF)
+        </button>
+      </div>
+    );
+  };
+
+  const activeTab = TABS.find(t => t.id === tab)!;
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return (
+    <div style={{ background: BG, minHeight: "100vh" }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+      {/* Sticky header */}
+      <header style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(255,255,255,0.97)",
+        borderBottom: `1px solid ${BORD}`, backdropFilter: "blur(8px)" }}>
+        <div style={{ maxWidth: 1140, margin: "0 auto", padding: "14px 28px",
+          display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <img src="/logo.svg" alt="BrandEcho" style={{ height: 28 }} />
+            <div style={{ width: 1, height: 20, background: BORD }} />
+            <div>
+              <span style={{ fontWeight: 700, color: T1 }}>{brand?.name}</span>
+              <span style={{ fontSize: 13, color: T3, marginLeft: 8 }}>{brand?.industry}</span>
             </div>
-          </section>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => {
+              const rows = [
+                ["BrandEcho Report", brand?.name, ""],
+                [""], ["QUERIES", "", ""],
+                ["Query", "Type", "Revenue %"],
+                ...queries.map(q => [q.text, q.type, q.revenue_proximity]),
+                [""], ["COMPETITORS", "", ""],
+                ["Name", "Domain", "Type"],
+                ...competitors.map(c => [c.name, c.domain, c.type]),
+              ];
+              const csv  = rows.map(r => r.map(String).map(v => `"${v}"`).join(",")).join("\n");
+              const blob = new Blob([csv], { type: "text/csv" });
+              const url  = URL.createObjectURL(blob);
+              const a    = document.createElement("a");
+              a.href = url; a.download = `${brand?.name || "brandecho"}-report.csv`; a.click();
+              URL.revokeObjectURL(url);
+            }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px",
+              borderRadius: 8, border: `1px solid ${BORD}`, background: SURF, color: T3, fontSize: 13, cursor: "pointer" }}>
+              <Download style={{ width: 14, height: 14 }} /> CSV
+            </button>
+            <button onClick={downloadScanPDF}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px",
+                borderRadius: 8, border: "none", background: A, color: "#111",
+                fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              <FileText style={{ width: 14, height: 14 }} /> Download PDF
+            </button>
+          </div>
+        </div>
 
-          {/* ── Phase 2 Feature Cards ─────────────────────────────────────── */}
-          <section>
-            <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" style={{ color: A }} /> Advanced Intelligence
-            </h2>
-            <div className="grid grid-cols-3 gap-4">
+        {/* Tab bar */}
+        <div style={{ maxWidth: 1140, margin: "0 auto", padding: "0 28px", display: "flex", gap: 0 }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              style={{ padding: "14px 22px", fontSize: 13, fontWeight: tab === t.id ? 700 : 500,
+                color: tab === t.id ? T1 : T3, background: "none", border: "none",
+                borderBottom: `2px solid ${tab === t.id ? t.accentColor : "transparent"}`,
+                cursor: "pointer", display: "flex", alignItems: "center", gap: 7,
+                transition: "color 0.15s, border-color 0.15s" }}>
+              <t.Icon style={{ width: 15, height: 15, color: tab === t.id ? t.accentColor : T3 }} />
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </header>
 
-              {/* AI Visibility Checker */}
-              <button onClick={() => router.push("/visibility")}
-                className="rounded-2xl border p-6 text-left group transition-all hover:scale-[1.02]"
-                style={{ background: SURF, borderColor: BORD }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = A; e.currentTarget.style.background = "rgba(0,255,150,0.05)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = BORD; e.currentTarget.style.background = SURF; }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "rgba(0,255,150,0.1)" }}>
-                  <Eye className="w-5 h-5" style={{ color: A }} />
-                </div>
-                <h3 className="font-semibold text-gray-900 text-sm mb-2">AI Visibility Checker</h3>
-                <p className="text-xs leading-relaxed" style={{ color: "#666" }}>
-                  Score each query 0–100 for AI citability. Claude prediction + Gemini live check + web authority signals.
-                </p>
-                <div className="flex items-center gap-1.5 mt-4 text-xs font-medium" style={{ color: A }}>
-                  Run analysis <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              </button>
-
-              {/* Content Brief Generator */}
-              <button onClick={() => router.push("/briefs")}
-                className="rounded-2xl border p-6 text-left group transition-all hover:scale-[1.02]"
-                style={{ background: SURF, borderColor: BORD }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "#fbbf24"; e.currentTarget.style.background = "rgba(251,191,36,0.04)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = BORD; e.currentTarget.style.background = SURF; }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "rgba(251,191,36,0.1)" }}>
-                  <Sparkles className="w-5 h-5" style={{ color: "#fbbf24" }} />
-                </div>
-                <h3 className="font-semibold text-gray-900 text-sm mb-2">Content Brief Generator</h3>
-                <p className="text-xs leading-relaxed" style={{ color: "#666" }}>
-                  Auto-generate structured briefs for top 5 revenue queries — titles, H2s, key points, and AI citation hooks.
-                </p>
-                <div className="flex items-center gap-1.5 mt-4 text-xs font-medium" style={{ color: "#fbbf24" }}>
-                  Generate briefs <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              </button>
-
-              {/* Competitor Gap Analysis */}
-              <button onClick={() => router.push("/competitors")}
-                className="rounded-2xl border p-6 text-left group transition-all hover:scale-[1.02]"
-                style={{ background: SURF, borderColor: BORD }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "#f87171"; e.currentTarget.style.background = "rgba(248,113,113,0.04)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = BORD; e.currentTarget.style.background = SURF; }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "rgba(248,113,113,0.1)" }}>
-                  <BarChart2 className="w-5 h-5" style={{ color: "#f87171" }} />
-                </div>
-                <h3 className="font-semibold text-gray-900 text-sm mb-2">Competitor Gap Analysis</h3>
-                <p className="text-xs leading-relaxed" style={{ color: "#666" }}>
-                  Visual heatmap showing which queries competitors appear in that you don't — with specific fixes.
-                </p>
-                <div className="flex items-center gap-1.5 mt-4 text-xs font-medium" style={{ color: "#f87171" }}>
-                  View gaps <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              </button>
-
-            </div>
-          </section>
-        </main>
+      {/* Tab description strip */}
+      <div style={{ background: SURF, borderBottom: `1px solid ${BORD}`, padding: "10px 28px" }}>
+        <div style={{ maxWidth: 1140, margin: "0 auto", fontSize: 13, color: T3 }}>
+          {activeTab.desc}
+        </div>
       </div>
 
-      <SmartRecommendationsPanel recommendations={recs} brandName={brand?.name || ""} />
+      {/* Main content */}
+      <main style={{ maxWidth: 1140, margin: "0 auto", padding: "36px 28px" }}>
+        {tab === "scan"       && <ScanTab />}
+        {tab === "visibility" && <VisibilityTab />}
+        {tab === "briefs"     && <BriefsTab />}
+        {tab === "gap"        && <GapTab />}
+      </main>
     </div>
   );
 }
