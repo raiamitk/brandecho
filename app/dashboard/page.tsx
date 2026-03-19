@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Eye, Sparkles, BarChart2, TrendingUp, Users, MessageSquare,
   Building2, Globe, Download, FileText, Zap, Gauge,
-  CheckCircle, XCircle, ChevronDown, ChevronUp, Copy, Check, AlertTriangle,
+  CheckCircle, XCircle, ChevronDown, ChevronUp, Copy, Check,
 } from "lucide-react";
 import type { Brand, Persona, Query, Competitor, Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
@@ -120,9 +120,17 @@ export default function DashboardPage() {
   const [gapData,      setGapData]      = useState<GapRow[]>([]);
   const [gapLoading,   setGapLoading]   = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [psData,       setPsData]       = useState<Record<string, any> | null>(null);
-  const [psLoading,    setPsLoading]    = useState(false);
-  const [psError,      setPsError]      = useState<string | null>(null);
+  const [psData,         setPsData]         = useState<Record<string, any> | null>(null);
+  const [psLoading,      setPsLoading]      = useState(false);
+  const [psError,        setPsError]        = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [schemaData,     setSchemaData]     = useState<Record<string, any> | null>(null);
+  const [schemaLoading,  setSchemaLoading]  = useState(false);
+  const [schemaError,    setSchemaError]    = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [authData,       setAuthData]       = useState<Record<string, any> | null>(null);
+  const [authLoading,    setAuthLoading]    = useState(false);
+  const [authError,      setAuthError]      = useState<string | null>(null);
 
   // UI state
   const [expandedBrief,   setExpandedBrief]   = useState<string | null>(null);
@@ -191,17 +199,39 @@ export default function DashboardPage() {
   const runPageSpeed = async () => {
     const brand_id = sessionStorage.getItem("brand_id");
     if (!brand_id || !brand?.domain) return;
-    setPsLoading(true);
-    setPsError(null);
+    setPsLoading(true); setPsError(null);
     try {
       const res  = await fetch("/api/pagespeed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id, domain: brand.domain }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setPsData(data);
-    } catch (e) {
-      setPsError(String(e));
-    }
+    } catch (e) { setPsError(String(e)); }
     setPsLoading(false);
+  };
+
+  const runSchemaCheck = async () => {
+    if (!brand?.domain) return;
+    setSchemaLoading(true); setSchemaError(null);
+    try {
+      const res  = await fetch("/api/schema", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain: brand.domain }) });
+      const data = await res.json();
+      if (data.error && !data.present) throw new Error(data.error);
+      setSchemaData(data);
+    } catch (e) { setSchemaError(String(e)); }
+    setSchemaLoading(false);
+  };
+
+  const runAuthorityCheck = async () => {
+    const brand_id = sessionStorage.getItem("brand_id");
+    if (!brand_id || !brand?.domain) return;
+    setAuthLoading(true); setAuthError(null);
+    try {
+      const res  = await fetch("/api/authority", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id, domain: brand.domain }) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setAuthData(data);
+    } catch (e) { setAuthError(String(e)); }
+    setAuthLoading(false);
   };
 
   // ── Copy brief ──────────────────────────────────────────────────────────────
@@ -820,183 +850,321 @@ export default function DashboardPage() {
     );
   };
 
+  // ── Shared sub-section wrapper ─────────────────────────────────────────────
+  const SectionPanel = ({ title, icon: Icon, color, children }: {
+    title: string; icon: React.ElementType; color: string; children: React.ReactNode;
+  }) => (
+    <div style={{ border: `1px solid ${BORD}`, borderRadius: 18, overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", background: SURF, borderBottom: `1px solid ${BORD}`,
+        display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 10, background: `${color}18`,
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon style={{ width: 16, height: 16, color }} />
+        </div>
+        <span style={{ fontSize: 14, fontWeight: 700, color: T1 }}>{title}</span>
+      </div>
+      <div style={{ padding: 20 }}>{children}</div>
+    </div>
+  );
+
   // TECHNICAL TAB ───────────────────────────────────────────────────────────
   const TechnicalTab = () => {
-    if (!psData) return (
-      <RunCTA
-        icon={Gauge} accentColor="#818cf8"
-        title="Technical Audit"
-        desc={`Check ${brand?.domain || "your site"} performance on mobile & desktop using Google PageSpeed Insights. See Core Web Vitals, top fixes, and why each metric matters for AI citability.`}
-        label="Run PageSpeed Audit"
-        loading={psLoading}
-        onClick={runPageSpeed}
-      />
-    );
-
-    if (psError) return (
-      <div style={{ textAlign: "center", padding: "72px 0" }}>
-        <AlertTriangle style={{ width: 40, height: 40, color: "#f87171", margin: "0 auto 16px" }} />
-        <h3 style={{ fontSize: 16, fontWeight: 700, color: T1, marginBottom: 8 }}>Audit failed</h3>
-        <p style={{ color: T3, marginBottom: 24, maxWidth: 440, margin: "0 auto 24px" }}>{psError}</p>
-        <button onClick={runPageSpeed}
-          style={{ background: "#818cf8", color: "#fff", fontWeight: 700, padding: "10px 28px", borderRadius: 10, border: "none", cursor: "pointer" }}>
-          Retry
-        </button>
-      </div>
-    );
-
     const SCORE_COLOR = (s: number) => s >= 90 ? "#15803d" : s >= 50 ? "#d97706" : "#dc2626";
     const SCORE_BG    = (s: number) => s >= 90 ? "#f0fdf4" : s >= 50 ? "#fffbeb" : "#fef2f2";
     const STATUS_COLOR: Record<string, string> = { good: "#15803d", "needs-improvement": "#d97706", poor: "#dc2626" };
     const STATUS_BG:    Record<string, string> = { good: "#f0fdf4", "needs-improvement": "#fffbeb", poor: "#fef2f2" };
 
-    const vitals       = psData.vitals       || [];
-    const opportunities= psData.opportunities || [];
-    const mScore       = psData.mobile_score;
-    const dScore       = psData.desktop_score;
-
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-        {/* Score cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 480 }}>
-          {[
-            { label: "Mobile Score",  score: mScore, icon: "📱" },
-            { label: "Desktop Score", score: dScore, icon: "🖥️" },
-          ].map(({ label, score, icon }) => (
-            <div key={label} style={{ background: score != null ? SCORE_BG(score) : SURF,
-              border: `1px solid ${score != null ? SCORE_COLOR(score) + "40" : BORD}`,
-              borderRadius: 16, padding: "20px 24px", textAlign: "center" }}>
-              <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
-              <div style={{ fontSize: 40, fontWeight: 900, color: score != null ? SCORE_COLOR(score) : T3, lineHeight: 1 }}>
-                {score ?? "—"}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: T2, marginTop: 6 }}>{label}</div>
-              <div style={{ fontSize: 11, color: T3, marginTop: 2 }}>
-                {score == null ? "N/A" : score >= 90 ? "Good" : score >= 50 ? "Needs Improvement" : "Poor"}
-              </div>
+        {/* ── 1. PageSpeed ──────────────────────────────────────────────── */}
+        <SectionPanel title="PageSpeed Insights" icon={Gauge} color="#818cf8">
+          {!psData && !psError && (
+            <div style={{ textAlign: "center", padding: "32px 0" }}>
+              <p style={{ color: T3, fontSize: 13, marginBottom: 16, maxWidth: 440, margin: "0 auto 16px" }}>
+                Mobile &amp; desktop performance scores with Core Web Vitals and AEO impact per metric.
+              </p>
+              <button onClick={runPageSpeed} disabled={psLoading}
+                style={{ background: "#818cf8", color: "#fff", fontWeight: 700, padding: "10px 28px",
+                  borderRadius: 10, border: "none", cursor: psLoading ? "default" : "pointer",
+                  fontSize: 13, opacity: psLoading ? 0.7 : 1 }}>
+                {psLoading ? "Running…" : "Run PageSpeed Audit"}
+              </button>
             </div>
-          ))}
-        </div>
-
-        {/* Core Web Vitals */}
-        <section>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: T1, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-            <Gauge style={{ width: 15, height: 15, color: "#818cf8" }} /> Core Web Vitals
-            <span style={{ fontSize: 11, color: T3, fontWeight: 400 }}>— Mobile · click row for AEO impact</span>
-          </h3>
-          <div style={{ border: `1px solid ${BORD}`, borderRadius: 14, overflow: "hidden" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 110px 110px 60px",
-              padding: "9px 16px", background: "#f3f4f6",
-              fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              <span>Metric</span><span>Value</span><span>Mobile</span><span>Desktop</span><span>Status</span>
+          )}
+          {psError && (
+            <div style={{ color: "#dc2626", fontSize: 13, padding: "8px 0" }}>
+              ⚠️ {psError} <button onClick={runPageSpeed} style={{ marginLeft: 12, color: "#818cf8", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Retry</button>
             </div>
-            {vitals.map((v: Record<string, string>, i: number) => {
-              const st = v.status as string || "poor";
-              return (
-                <div key={v.id} style={{ display: "flex", flexDirection: "column",
-                  borderTop: `1px solid ${BORD}`, background: i % 2 === 1 ? "rgba(0,0,0,0.012)" : BG }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 110px 110px 60px",
-                    padding: "11px 16px", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: T1 }}>{v.short}</span>
-                    <span style={{ fontSize: 12, color: T2 }}>{v.label}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: STATUS_COLOR[st] || T3 }}>{v.display}</span>
-                    <span style={{ fontSize: 13, color: T3 }}>{v.desktop_display || "—"}</span>
-                    <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 99,
-                      fontSize: 10, fontWeight: 700, background: STATUS_BG[st] || SURF,
-                      color: STATUS_COLOR[st] || T3, textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                      {st === "needs-improvement" ? "Avg" : st}
-                    </span>
+          )}
+          {psData && (() => {
+            const vitals        = psData.vitals        || [];
+            const opportunities = psData.opportunities || [];
+            const mScore        = psData.mobile_score;
+            const dScore        = psData.desktop_score;
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                {/* Scores */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, maxWidth: 360 }}>
+                  {[{ label: "Mobile", score: mScore, icon: "📱" }, { label: "Desktop", score: dScore, icon: "🖥️" }].map(({ label, score, icon }) => (
+                    <div key={label} style={{ background: score != null ? SCORE_BG(score) : SURF,
+                      border: `1px solid ${score != null ? SCORE_COLOR(score) + "40" : BORD}`,
+                      borderRadius: 14, padding: "16px 20px", textAlign: "center" }}>
+                      <div style={{ fontSize: 18, marginBottom: 4 }}>{icon}</div>
+                      <div style={{ fontSize: 36, fontWeight: 900, color: score != null ? SCORE_COLOR(score) : T3, lineHeight: 1 }}>{score ?? "—"}</div>
+                      <div style={{ fontSize: 12, color: T2, marginTop: 4, fontWeight: 600 }}>{label}</div>
+                      <div style={{ fontSize: 11, color: T3 }}>{score == null ? "N/A" : score >= 90 ? "Good" : score >= 50 ? "Needs Work" : "Poor"}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Vitals */}
+                <div style={{ border: `1px solid ${BORD}`, borderRadius: 12, overflow: "hidden" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "100px 1fr 90px 90px 60px",
+                    padding: "8px 14px", background: "#f3f4f6",
+                    fontSize: 10, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <span>Metric</span><span>Name</span><span>Mobile</span><span>Desktop</span><span>Status</span>
                   </div>
-                  {v.aeo_impact && (
-                    <div style={{ padding: "0 16px 10px 16px", paddingLeft: 156 }}>
-                      <div style={{ fontSize: 11, color: "#7c3aed", background: "#f5f3ff",
-                        border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px",
-                        display: "flex", gap: 6, alignItems: "flex-start" }}>
-                        <span style={{ flexShrink: 0 }}>🤖</span>
-                        <span><strong>AEO:</strong> {v.aeo_impact}</span>
+                  {vitals.map((v: Record<string, string>, i: number) => {
+                    const st = v.status || "poor";
+                    return (
+                      <div key={v.id} style={{ borderTop: `1px solid ${BORD}`, background: i % 2 === 1 ? "rgba(0,0,0,0.012)" : BG }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "100px 1fr 90px 90px 60px", padding: "10px 14px", alignItems: "center" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: T1 }}>{v.short}</span>
+                          <span style={{ fontSize: 12, color: T2 }}>{v.label}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: STATUS_COLOR[st] || T3 }}>{v.display}</span>
+                          <span style={{ fontSize: 12, color: T3 }}>{v.desktop_display || "—"}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 99,
+                            background: STATUS_BG[st] || SURF, color: STATUS_COLOR[st] || T3, textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                            {st === "needs-improvement" ? "Avg" : st}
+                          </span>
+                        </div>
+                        {v.aeo_impact && (
+                          <div style={{ padding: "0 14px 8px 114px" }}>
+                            <div style={{ fontSize: 11, color: "#7c3aed", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "5px 10px", display: "flex", gap: 5 }}>
+                              <span>🤖</span><span><strong>AEO:</strong> {v.aeo_impact}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Opportunities */}
-        {opportunities.length > 0 && (
-          <section>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: T1, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-              <AlertTriangle style={{ width: 15, height: 15, color: "#d97706" }} /> Top Fixes
-              <span style={{ fontSize: 11, color: T3, fontWeight: 400 }}>— estimated time savings</span>
-            </h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {opportunities.map((op: Record<string, string | number>, i: number) => (
-                <div key={i} style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 12, padding: "14px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: T1 }}>{op.title}</div>
-                    {(op.savings_ms as number) > 0 && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#d97706", background: "#fffbeb",
-                        border: "1px solid #fde68a", padding: "2px 10px", borderRadius: 99, whiteSpace: "nowrap", flexShrink: 0 }}>
-                        −{((op.savings_ms as number) / 1000).toFixed(1)}s
-                      </span>
-                    )}
+                {/* Opportunities */}
+                {opportunities.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T1, marginBottom: 10 }}>⚡ Top Fixes</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {opportunities.map((op: Record<string, string | number>, i: number) => (
+                        <div key={i} style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 10, padding: "12px 14px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: T1 }}>{op.title}</span>
+                            {(op.savings_ms as number) > 0 && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "#d97706", background: "#fffbeb", border: "1px solid #fde68a", padding: "1px 8px", borderRadius: 99, whiteSpace: "nowrap", flexShrink: 0 }}>
+                                −{((op.savings_ms as number) / 1000).toFixed(1)}s
+                              </span>
+                            )}
+                          </div>
+                          {op.aeo_impact && (
+                            <div style={{ fontSize: 11, color: "#7c3aed", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 7, padding: "5px 9px", display: "flex", gap: 5, marginTop: 4 }}>
+                              <span>🤖</span><span><strong>AEO:</strong> {op.aeo_impact}</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12, color: T3, marginBottom: op.aeo_impact ? 8 : 0 }}>{op.description}</div>
-                  {op.aeo_impact && (
-                    <div style={{ fontSize: 11, color: "#7c3aed", background: "#f5f3ff",
-                      border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px",
-                      display: "flex", gap: 6 }}>
-                      <span>🤖</span><span><strong>AEO:</strong> {op.aeo_impact}</span>
-                    </div>
-                  )}
+                )}
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button onClick={runPageSpeed} style={{ fontSize: 12, color: T3, background: SURF, border: `1px solid ${BORD}`, padding: "7px 14px", borderRadius: 8, cursor: "pointer" }}>🔄 Re-run</button>
+                  <span style={{ fontSize: 11, color: T3 }}>Powered by Google PageSpeed Insights · {new Date(psData.checked_at).toLocaleTimeString()}</span>
                 </div>
-              ))}
+              </div>
+            );
+          })()}
+        </SectionPanel>
+
+        {/* ── 2. Schema Markup ──────────────────────────────────────────── */}
+        <SectionPanel title="Schema Markup Checker" icon={FileText} color="#0ea5e9">
+          {!schemaData && !schemaError && (
+            <div style={{ textAlign: "center", padding: "32px 0" }}>
+              <p style={{ color: T3, fontSize: 13, marginBottom: 16, maxWidth: 440, margin: "0 auto 16px" }}>
+                Crawls your homepage to detect JSON-LD schema types. Shows what's present, what's missing, and the AEO impact of each gap.
+              </p>
+              <button onClick={runSchemaCheck} disabled={schemaLoading}
+                style={{ background: "#0ea5e9", color: "#fff", fontWeight: 700, padding: "10px 28px",
+                  borderRadius: 10, border: "none", cursor: schemaLoading ? "default" : "pointer",
+                  fontSize: 13, opacity: schemaLoading ? 0.7 : 1 }}>
+                {schemaLoading ? "Scanning…" : "Check Schema Markup"}
+              </button>
             </div>
-          </section>
-        )}
+          )}
+          {schemaError && (
+            <div style={{ color: "#dc2626", fontSize: 13, padding: "8px 0" }}>
+              ⚠️ {schemaError} <button onClick={runSchemaCheck} style={{ marginLeft: 12, color: "#0ea5e9", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Retry</button>
+            </div>
+          )}
+          {schemaData && (() => {
+            const present  = schemaData.present  || [];
+            const missing  = schemaData.missing  || [];
+            const score    = schemaData.health_score ?? 0;
+            const critGaps = schemaData.critical_missing ?? 0;
+            const SCORE_C  = score >= 70 ? "#15803d" : score >= 40 ? "#d97706" : "#dc2626";
+            const IMP_COLOR: Record<string, string> = { critical: "#dc2626", high: "#d97706", medium: "#059669", low: "#6b7280" };
+            const IMP_BG:    Record<string, string> = { critical: "#fef2f2", high: "#fffbeb", medium: "#f0fdf4", low: "#f9fafb" };
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                {/* Summary row */}
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {[
+                    { label: "Schema Health",    value: `${score}/100`, color: SCORE_C, bg: score >= 70 ? "#f0fdf4" : score >= 40 ? "#fffbeb" : "#fef2f2" },
+                    { label: "Schemas Found",    value: present.length, color: "#059669", bg: "#f0fdf4" },
+                    { label: "Critical Missing", value: critGaps,       color: "#dc2626", bg: "#fef2f2" },
+                  ].map(({ label, value, color, bg }) => (
+                    <div key={label} style={{ background: bg, border: `1px solid ${color}30`, borderRadius: 12, padding: "10px 18px" }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
+                      <div style={{ fontSize: 11, color, fontWeight: 600 }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
 
-        {/* Re-run + download */}
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={runPageSpeed}
-            style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
-              borderRadius: 10, border: `1px solid ${BORD}`, background: SURF,
-              color: T2, fontSize: 13, cursor: "pointer" }}>
-            🔄 Re-run Audit
-          </button>
-          <button onClick={() => {
-            const rows = [
-              ["BrandEcho — Technical Audit", brand?.name || "", ""],
-              ["URL", psData.url, ""],
-              ["Mobile Score", mScore ?? "—", ""],
-              ["Desktop Score", dScore ?? "—", ""],
-              [""],
-              ["CORE WEB VITALS", "Mobile", "Desktop"],
-              ...vitals.map((v: Record<string, string>) => [v.label, v.display, v.desktop_display || "—"]),
-              [""],
-              ["TOP FIXES", "Savings (ms)", ""],
-              ...opportunities.map((op: Record<string, string | number>) => [op.title, op.savings_ms, op.aeo_impact]),
-            ];
-            const csv  = rows.map(r => r.map(String).map((cell: string) => `"${cell}"`).join(",")).join("\n");
-            const blob = new Blob([csv], { type: "text/csv" });
-            const url  = URL.createObjectURL(blob);
-            const a    = document.createElement("a");
-            a.href = url; a.download = `${brand?.name || "brandecho"}-technical-audit.csv`; a.click();
-            URL.revokeObjectURL(url);
-          }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px",
-            borderRadius: 10, border: "none", background: "#818cf8", color: "#fff",
-            fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-            <FileText style={{ width: 15, height: 15 }} /> Download Audit (CSV)
-          </button>
-        </div>
+                {/* Present schemas */}
+                {present.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#15803d", marginBottom: 8 }}>✅ Found ({present.length})</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {present.map((s: Record<string, string>) => (
+                        <span key={s.type} title={s.aeo_impact}
+                          style={{ fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 99,
+                            background: "#f0fdf4", color: "#15803d", border: "1px solid #bbf7d0", cursor: "help" }}>
+                          {s.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-        <div style={{ fontSize: 11, color: T3, borderTop: `1px solid ${BORD}`, paddingTop: 12 }}>
-          Checked: {psData.url} · {new Date(psData.checked_at).toLocaleString()} · Powered by Google PageSpeed Insights
-        </div>
+                {/* Missing schemas */}
+                {missing.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T1, marginBottom: 8 }}>❌ Missing — sorted by AEO impact</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {missing.slice(0, 6).map((s: Record<string, string>) => (
+                        <div key={s.type} style={{ background: IMP_BG[s.importance] || SURF,
+                          border: `1px solid ${IMP_COLOR[s.importance] || BORD}30`,
+                          borderLeft: `3px solid ${IMP_COLOR[s.importance] || BORD}`,
+                          borderRadius: 10, padding: "10px 14px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: T1 }}>{s.label}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: IMP_COLOR[s.importance],
+                              background: IMP_BG[s.importance], padding: "1px 7px", borderRadius: 99, textTransform: "uppercase" }}>
+                              {s.importance}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, color: "#7c3aed", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 7, padding: "5px 9px", display: "flex", gap: 5 }}>
+                            <span>🤖</span><span><strong>AEO:</strong> {s.aeo_impact}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <button onClick={runSchemaCheck} style={{ alignSelf: "flex-start", fontSize: 12, color: T3, background: SURF, border: `1px solid ${BORD}`, padding: "7px 14px", borderRadius: 8, cursor: "pointer" }}>🔄 Re-scan</button>
+              </div>
+            );
+          })()}
+        </SectionPanel>
+
+        {/* ── 3. Domain Authority ───────────────────────────────────────── */}
+        <SectionPanel title="Domain Authority vs Competitors" icon={TrendingUp} color="#f59e0b">
+          {!authData && !authError && (
+            <div style={{ textAlign: "center", padding: "32px 0" }}>
+              <p style={{ color: T3, fontSize: 13, marginBottom: 16, maxWidth: 440, margin: "0 auto 16px" }}>
+                Compare your domain's PageRank against competitors. Higher authority = more likely to be cited in AI answers.
+                {!process.env.NEXT_PUBLIC_HAS_OPR && <span style={{ display: "block", marginTop: 8, color: "#d97706" }}>⚠️ Add <strong>OPENPR_API_KEY</strong> in Vercel for live scores (free at domainranker.com)</span>}
+              </p>
+              <button onClick={runAuthorityCheck} disabled={authLoading}
+                style={{ background: "#f59e0b", color: "#fff", fontWeight: 700, padding: "10px 28px",
+                  borderRadius: 10, border: "none", cursor: authLoading ? "default" : "pointer",
+                  fontSize: 13, opacity: authLoading ? 0.7 : 1 }}>
+                {authLoading ? "Checking…" : "Check Domain Authority"}
+              </button>
+            </div>
+          )}
+          {authError && (
+            <div style={{ color: "#dc2626", fontSize: 13, padding: "8px 0" }}>
+              ⚠️ {authError} <button onClick={runAuthorityCheck} style={{ marginLeft: 12, color: "#f59e0b", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Retry</button>
+            </div>
+          )}
+          {authData && (() => {
+            const comps   = authData.competitors || [];
+            const allRows = [
+              { name: brand?.name || authData.brand_domain, domain: authData.brand_domain, pr: authData.brand_pr, label: authData.brand_label, color: authData.brand_color, bg: authData.brand_bg, isBrand: true },
+              ...comps.map((c: Record<string, string | number | boolean>) => ({ ...c, isBrand: false })),
+            ].sort((a, b) => (b.pr as number) - (a.pr as number));
+            const maxPr = Math.max(...allRows.map(r => r.pr as number), 1);
+            const apiAvail = authData.api_available;
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                {!apiAvail && (
+                  <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#92400e" }}>
+                    📊 <strong>Live scores unavailable</strong> — Add <code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: 4 }}>OPENPR_API_KEY</code> in Vercel env vars for real scores (free at <strong>domainranker.com</strong>).
+                  </div>
+                )}
+
+                {/* Bar chart */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {allRows.map((r) => (
+                    <div key={r.domain as string} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ width: 140, flexShrink: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: r.isBrand ? 800 : 600, color: r.isBrand ? AT : T1 }}>{r.name as string}</div>
+                        <div style={{ fontSize: 11, color: T3 }}>{r.domain as string}</div>
+                      </div>
+                      <div style={{ flex: 1, height: 28, background: "#f3f4f6", borderRadius: 8, overflow: "hidden", position: "relative" }}>
+                        {(r.pr as number) >= 0 ? (
+                          <div style={{ height: "100%", width: `${((r.pr as number) / 10) * 100}%`,
+                            background: r.isBrand ? A : r.ahead_of_brand ? "#fca5a5" : "#d1fae5",
+                            borderRadius: 8, display: "flex", alignItems: "center", paddingLeft: 10,
+                            minWidth: 40, transition: "width 0.5s ease" }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "#111", whiteSpace: "nowrap" }}>{r.pr}</span>
+                          </div>
+                        ) : (
+                          <div style={{ height: "100%", display: "flex", alignItems: "center", paddingLeft: 10 }}>
+                            <span style={{ fontSize: 12, color: T3 }}>Score unavailable — add API key</span>
+                          </div>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
+                        background: r.bg as string, color: r.color as string, minWidth: 60, textAlign: "center" }}>
+                        {r.label as string}
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 11, color: T3 }}>Scale: 0–10 PageRank (OpenPageRank)</div>
+                </div>
+
+                {/* AEO note */}
+                <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 10, padding: "12px 14px", fontSize: 12, color: "#7c3aed" }}>
+                  🤖 <strong>AEO Impact:</strong> {authData.aeo_note}
+                </div>
+
+                {/* Recommendations */}
+                {authData.recommendations?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T1, marginBottom: 8 }}>📈 Recommendations</div>
+                    {authData.recommendations.map((r: string, i: number) => (
+                      <div key={i} style={{ fontSize: 13, color: T2, padding: "6px 0", borderBottom: `1px solid ${BORD}` }}>• {r}</div>
+                    ))}
+                  </div>
+                )}
+                <button onClick={runAuthorityCheck} style={{ alignSelf: "flex-start", fontSize: 12, color: T3, background: SURF, border: `1px solid ${BORD}`, padding: "7px 14px", borderRadius: 8, cursor: "pointer" }}>🔄 Re-check</button>
+              </div>
+            );
+          })()}
+        </SectionPanel>
       </div>
     );
   };
+
 
   const activeTab = TABS.find(t => t.id === tab)!;
 
