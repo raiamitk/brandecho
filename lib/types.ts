@@ -24,6 +24,13 @@ export interface Persona {
   created_at: string;
 }
 
+export interface QueryCitation {
+  source: string;       // e.g. "Reddit r/personalfinance"
+  url_pattern: string;  // e.g. "reddit.com/r/personalfinance"
+  type: "review_site" | "comparison_site" | "forum" | "news" | "expert_guide" | "video";
+  why: string;          // why AI engines cite this for this query
+}
+
 export interface Query {
   id: string;
   brand_id: string;
@@ -31,7 +38,8 @@ export interface Query {
   text: string;
   type: "aeo" | "geo" | "seo_longtail";
   intent: "awareness" | "consideration" | "purchase" | "comparison";
-  revenue_proximity: number; // 0-100
+  revenue_proximity: number; // 0-100: purchase cycle proximity (100 = ready to buy now)
+  citations: QueryCitation[]; // 3 sources AI engines cite for this query
   created_at: string;
 }
 

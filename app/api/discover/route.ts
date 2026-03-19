@@ -70,11 +70,11 @@ export async function POST(req: NextRequest) {
         const personaData = personasAndQueries.personas;
         stepUpdate("personas", "done", `Created ${personaData.length} personas`);
 
-        type QueryItem = { text: string; type: string; intent: string; revenue_proximity: number; persona_name: string };
+        type QueryItem = { text: string; type: string; intent: string; revenue_proximity: number; citations: object[]; persona_name: string };
         const allQueries: QueryItem[] = [];
         for (const persona of personaData) {
           (persona.queries || []).forEach((q: Omit<QueryItem, "persona_name">) =>
-            allQueries.push({ ...q, persona_name: persona.name })
+            allQueries.push({ ...q, citations: q.citations || [], persona_name: persona.name })
           );
         }
         stepUpdate("queries", "done", `Generated ${allQueries.length} queries`);
@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
                   brand_id: brand.id, persona_id: p.id,
                   text: q.text, type: q.type, intent: q.intent,
                   revenue_proximity: q.revenue_proximity,
+                  citations: q.citations || [],
                 }))
               );
             }

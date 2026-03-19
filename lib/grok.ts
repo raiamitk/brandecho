@@ -63,20 +63,38 @@ export async function generatePersonasAndQueries(
   const raw = await claudeChat(
     "You are a user research and AEO/GEO/SEO expert. Always return valid JSON only. No markdown.",
     `For "${brandName}" (${description}, ${industry}):
-1. Generate 3 diverse user personas
-2. For each persona, generate 5 queries they would search BEFORE choosing ${brandName}
+1. Generate 3 diverse user personas (budget / mid / premium income levels)
+2. For each persona, generate 5 queries they would type into ChatGPT, Perplexity, or Google to find a solution
 
-CRITICAL QUERY RULES — violations make results useless:
-• NEVER include "${brandName}" in any query text — not even once
-• NEVER include any competitor brand name alone as the whole query
-• Queries must represent the PRE-DECISION stage: user is exploring the market, comparing options, or solving a problem — they have NOT committed to ${brandName} yet
-• Include these query types:
-  - "best [category/solution] for [use case/persona] in [location if relevant]"
-  - "[Competitor A] vs [Competitor B] — which is better for [use case]"
-  - "how to [solve the exact problem ${brandName} solves] without [pain point]"
-  - "is [category approach] safe/worth it for [persona type]"
-  - "[category] alternatives that [key differentiator]"
-• These are the queries where ${brandName} SHOULD appear in AI engine answers but currently might NOT — that is the optimization opportunity
+═══ CRITICAL QUERY RULES — read carefully ═══
+
+RULE 1 — ZERO brand name: NEVER include "${brandName}" or any specific brand name alone in the query. The user hasn't chosen yet.
+
+RULE 2 — Sound EXACTLY like a real person asking an AI assistant. Use natural language:
+  ✅ "what's the best shaving razor under ₹300 for daily use?"
+  ✅ "which zero-brokerage stock app is safest for first-time investors in India?"
+  ✅ "is it worth switching from Zerodha to a newer trading app?"
+  ✅ "Zerodha vs Groww vs Angel One — which charges less for beginners?"
+  ✅ "how do I start investing in mutual funds without paying commission?"
+  ❌ "Kotak Neo features" (branded, navigational)
+  ❌ "best app" (too vague, not how people actually ask)
+
+RULE 3 — Tailor queries to THAT persona's income_level and pain_points:
+  • budget persona → queries include price caps ("under ₹X"), free options, "no hidden charges"
+  • mid persona → queries about features vs cost, safety, reliability
+  • premium persona → queries about best-in-class, professional features, advanced use cases
+
+RULE 4 — revenue_proximity = how close this person is to pulling out their wallet RIGHT NOW:
+  90–100: Ready to buy. Comparing final 2-3 options. ("X vs Y which should I buy today?")
+  70–89:  Evaluating. Reading reviews. ("is X reliable for daily use?", "best X under budget")
+  50–69:  Considering. Learning what exists. ("how does X type of product work?")
+  20–49:  Awareness. Just discovered the need. ("what is X?", "do I even need X?")
+
+RULE 5 — Add 3 citations per query: real sources that AI engines (ChatGPT, Perplexity, Gemini) typically cite when answering this type of query. These tell the brand WHERE to earn mentions to influence AI answers.
+  • Types: "review_site" | "comparison_site" | "forum" | "news" | "expert_guide" | "video"
+  • Examples: Reddit threads, Wirecutter-style reviews, YouTube reviews, industry news, expert blogs
+
+═══════════════════════════════════════════════
 
 Return a single JSON object:
 {
@@ -90,10 +108,20 @@ Return a single JSON object:
       "goals": ["g1"],
       "ai_tools_used": ["ChatGPT"],
       "query_style": "casual/formal/voice",
-      "income_level": "budget/mid/premium",
+      "income_level": "budget|mid|premium",
       "discovery_channel": "how they find brands",
       "queries": [
-        {"text":"query text — NO brand name here","type":"aeo|geo|seo_longtail","intent":"awareness|consideration|comparison","revenue_proximity":50}
+        {
+          "text": "natural language question as typed into AI — NO brand name",
+          "type": "aeo|geo|seo_longtail",
+          "intent": "awareness|consideration|comparison|purchase",
+          "revenue_proximity": 75,
+          "citations": [
+            {"source": "Source Name (e.g. Reddit r/personalfinance)", "url_pattern": "reddit.com/r/personalfinance", "type": "forum", "why": "one sentence: why AI cites this for this query"},
+            {"source": "Source Name", "url_pattern": "domain.com", "type": "review_site", "why": "one sentence"},
+            {"source": "Source Name", "url_pattern": "domain.com", "type": "comparison_site", "why": "one sentence"}
+          ]
+        }
       ]
     }
   ]

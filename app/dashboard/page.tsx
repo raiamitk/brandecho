@@ -120,8 +120,9 @@ export default function DashboardPage() {
   const [gapLoading,   setGapLoading]   = useState(false);
 
   // UI state
-  const [expandedBrief, setExpandedBrief] = useState<string | null>(null);
-  const [copiedId,      setCopiedId]      = useState<string | null>(null);
+  const [expandedBrief,   setExpandedBrief]   = useState<string | null>(null);
+  const [expandedQueryId, setExpandedQueryId] = useState<string | null>(null);
+  const [copiedId,        setCopiedId]        = useState<string | null>(null);
 
   useEffect(() => {
     const brandId = sessionStorage.getItem("brand_id");
@@ -386,31 +387,90 @@ export default function DashboardPage() {
           <MessageSquare style={{ width: 16, height: 16, color: A }} /> Optimisation Queries
         </h2>
         <p style={{ fontSize: 13, color: T3, marginBottom: 16 }}>
-          Pre-decision queries — these are the searches where {brand?.name} should appear but might not yet.
+          Pre-decision queries — real searches where {brand?.name} should appear in AI answers. Click any row to see AI citation sources.
         </p>
-        <div style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 74px 120px 90px", padding: "10px 20px",
-            background: "#f3f4f6", fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            <span>Query</span><span>Type</span><span>Intent</span><span>Revenue</span>
+        <div style={{ border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
+          {/* Table header */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 74px 110px 180px 20px",
+            padding: "10px 20px", background: "#f3f4f6",
+            fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            <span>Query</span><span>Type</span><span>Intent</span><span>Purchase Stage</span><span />
           </div>
           {queries.map((q, i) => {
-            const ts = TYPE_STYLE[q.type] || TYPE_STYLE.seo;
+            const ts    = TYPE_STYLE[q.type] || TYPE_STYLE.seo;
+            const open  = expandedQueryId === q.id;
+            const stage = q.revenue_proximity >= 90 ? { label: "Ready to Buy",  color: "#15803d", bg: "#f0fdf4" }
+                        : q.revenue_proximity >= 70 ? { label: "Evaluating",    color: "#1d4ed8", bg: "#eff6ff" }
+                        : q.revenue_proximity >= 50 ? { label: "Considering",   color: "#d97706", bg: "#fffbeb" }
+                        : q.revenue_proximity >= 20 ? { label: "Researching",   color: "#7c3aed", bg: "#f5f3ff" }
+                        :                             { label: "Awareness",     color: T3,        bg: SURF };
+            const citations: { source: string; url_pattern: string; type: string; why: string }[] =
+              Array.isArray(q.citations) ? q.citations : [];
+            const CITE_ICON: Record<string, string> = {
+              forum: "💬", review_site: "⭐", comparison_site: "⚖️",
+              news: "📰", expert_guide: "📚", video: "🎬",
+            };
             return (
-              <div key={q.id} style={{ display: "grid", gridTemplateColumns: "1fr 74px 120px 90px",
-                padding: "12px 20px", borderTop: `1px solid ${BORD}`, alignItems: "center",
-                background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : BG }}>
-                <span style={{ fontSize: 13, color: T1 }}>{q.text}</span>
-                <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 99,
-                  fontSize: 11, fontWeight: 600, background: ts.bg, color: ts.color, justifySelf: "start" }}>
-                  {q.type === "seo_longtail" ? "SEO" : q.type.toUpperCase()}
-                </span>
-                <span style={{ fontSize: 12, color: T2, textTransform: "capitalize" }}>{q.intent}</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ height: 6, flex: 1, borderRadius: 99, background: BORD, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${q.revenue_proximity}%`, background: A, borderRadius: 99 }} />
+              <div key={q.id} style={{ borderTop: `1px solid ${BORD}`, background: open ? "#fafffe" : i % 2 === 1 ? "rgba(0,0,0,0.012)" : BG }}>
+                {/* Main row — clickable */}
+                <button onClick={() => setExpandedQueryId(open ? null : q.id)}
+                  style={{ width: "100%", display: "grid", gridTemplateColumns: "1fr 74px 110px 180px 20px",
+                    padding: "13px 20px", alignItems: "center", background: "none", border: "none",
+                    cursor: "pointer", textAlign: "left", gap: 0 }}>
+                  <span style={{ fontSize: 13, color: T1, paddingRight: 16 }}>{q.text}</span>
+                  <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 99,
+                    fontSize: 11, fontWeight: 600, background: ts.bg, color: ts.color, justifySelf: "start" }}>
+                    {q.type === "seo_longtail" ? "SEO" : q.type.toUpperCase()}
+                  </span>
+                  <span style={{ fontSize: 12, color: T2, textTransform: "capitalize" }}>{q.intent}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ height: 6, flex: 1, borderRadius: 99, background: BORD, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${q.revenue_proximity}%`, background: stage.color, borderRadius: 99 }} />
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
+                      background: stage.bg, color: stage.color, whiteSpace: "nowrap" }}>
+                      {stage.label}
+                    </span>
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: AT, minWidth: 28 }}>{q.revenue_proximity}%</span>
-                </div>
+                  {open
+                    ? <ChevronUp  style={{ width: 14, height: 14, color: T3 }} />
+                    : <ChevronDown style={{ width: 14, height: 14, color: T3 }} />}
+                </button>
+
+                {/* Citations panel */}
+                {open && (
+                  <div style={{ padding: "0 20px 16px 20px", borderTop: `1px dashed ${BORD}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: AT, textTransform: "uppercase",
+                      letterSpacing: "0.5px", margin: "12px 0 8px" }}>
+                      📎 AI Citation Sources — where {brand?.name} needs to earn mentions for this query
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {citations.length > 0 ? citations.map((c, ci) => (
+                        <div key={ci} style={{ display: "flex", alignItems: "flex-start", gap: 12,
+                          background: SURF, border: `1px solid ${BORD}`, borderRadius: 10, padding: "10px 14px" }}>
+                          <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>
+                            {CITE_ICON[c.type] || "🔗"}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: T1 }}>{c.source}</span>
+                              <span style={{ fontSize: 10, fontWeight: 600, color: T3, background: "#f3f4f6",
+                                padding: "1px 6px", borderRadius: 99, textTransform: "uppercase" }}>
+                                {c.type.replace("_", " ")}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 12, color: T3 }}>{c.url_pattern}</div>
+                            <div style={{ fontSize: 12, color: T2, marginTop: 4 }}>{c.why}</div>
+                          </div>
+                        </div>
+                      )) : (
+                        <div style={{ fontSize: 12, color: T3, fontStyle: "italic" }}>
+                          Citations will appear for newly scanned brands. Re-scan to generate citations.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
