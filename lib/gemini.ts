@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  Google Gemini API — free tier (gemini-1.5-flash)
+//  Google Gemini API — free tier (gemini-2.0-flash)
 //  Free limits: 15 RPM, 1M tokens/day, no credit card needed
 //  Get key at: https://aistudio.google.com/app/apikey
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 export interface GeminiVisibilityResult {
   mentioned: boolean;
@@ -37,7 +37,7 @@ export async function checkGeminiVisibility(
 
     if (!res.ok) {
       const err = await res.text();
-      console.error("Gemini API error:", err);
+      console.error(`Gemini API error ${res.status} for model gemini-2.0-flash:`, err);
       return { mentioned: false, excerpt: "", score: -1, available: false };
     }
 

@@ -5,7 +5,7 @@
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
 const CLAUDE_MODEL   = "claude-sonnet-4-6";
 
-async function claudeChat(systemPrompt: string, userPrompt: string): Promise<string> {
+async function claudeChat(systemPrompt: string, userPrompt: string, maxTokens = 4000): Promise<string> {
   const res = await fetch(CLAUDE_API_URL, {
     method: "POST",
     headers: {
@@ -15,7 +15,7 @@ async function claudeChat(systemPrompt: string, userPrompt: string): Promise<str
     },
     body: JSON.stringify({
       model:      CLAUDE_MODEL,
-      max_tokens: 4000,
+      max_tokens: maxTokens,
       system:     systemPrompt,
       messages:   [{ role: "user", content: userPrompt }],
     }),
@@ -60,6 +60,7 @@ export async function generatePersonasAndQueries(
   industry: string,
   description: string
 ) {
+  // 8000 tokens: 3 personas × 5 queries × 3 citations each = large JSON payload
   const raw = await claudeChat(
     "You are a user research and AEO/GEO/SEO expert. Always return valid JSON only. No markdown.",
     `For "${brandName}" (${description}, ${industry}):
@@ -125,7 +126,8 @@ Return a single JSON object:
       ]
     }
   ]
-}`
+}`,
+    8000
   );
   return JSON.parse(raw);
 }
