@@ -34,7 +34,7 @@ const TYPE_STYLE: Record<string, { bg: string; color: string }> = {
 type TabId = "scan" | "visibility" | "briefs" | "gap" | "technical" | "answers";
 const TABS: { id: TabId; label: string; Icon: React.ElementType; accentColor: string; desc: string }[] = [
   { id: "scan",       label: "AEO / GEO Scan",    Icon: Zap,       accentColor: A,         desc: "Personas, queries, competitors & smart recommendations from your brand scan" },
-  { id: "answers",    label: "AI Answers",         Icon: Bot,       accentColor: "#06b6d4", desc: "See exactly what Gemini says when asked your target queries — brand & competitor mentions highlighted" },
+  { id: "answers",    label: "AI Answers",         Icon: Bot,       accentColor: "#06b6d4", desc: "See what AI assistants say when asked your target queries — brand & competitor mentions highlighted" },
   { id: "visibility", label: "AI Visibility",      Icon: Eye,       accentColor: A,         desc: "Score every query for AI citability — Claude + Gemini + web authority signals" },
   { id: "briefs",     label: "Content Briefs",     Icon: Sparkles,  accentColor: "#fbbf24", desc: "AI-optimised content briefs for your top queries — ready to publish" },
   { id: "gap",        label: "Competitor Gap",     Icon: BarChart2, accentColor: "#f87171", desc: "Queries where competitors appear in AI answers but your brand doesn't" },
@@ -68,7 +68,7 @@ interface AnswerResult {
 interface AnswersData {
   brand_name: string; competitor_names: string[]; total_queries: number;
   brand_mentioned_count: number; competitor_only_count: number;
-  available: boolean; answers: AnswerResult[];
+  available: boolean; ai_source?: string; answers: AnswerResult[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1127,8 +1127,7 @@ export default function DashboardPage() {
           {!authData && !authError && (
             <div style={{ textAlign: "center", padding: "32px 0" }}>
               <p style={{ color: T3, fontSize: 13, marginBottom: 16, maxWidth: 440, margin: "0 auto 16px" }}>
-                Compare your domain's PageRank against competitors. Higher authority = more likely to be cited in AI answers.
-                {!process.env.NEXT_PUBLIC_HAS_OPR && <span style={{ display: "block", marginTop: 8, color: "#d97706" }}>⚠️ Add <strong>OPENPR_API_KEY</strong> in Vercel for live scores (free at openpagerank.com)</span>}
+                Compare your domain&apos;s PageRank against competitors. Higher authority = more likely to be cited in AI answers.
               </p>
               <button onClick={runAuthorityCheck} disabled={authLoading}
                 style={{ background: "#f59e0b", color: "#fff", fontWeight: 700, padding: "10px 28px",
@@ -1154,8 +1153,12 @@ export default function DashboardPage() {
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                 {!apiAvail && (
-                  <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#92400e" }}>
-                    📊 <strong>Live scores unavailable</strong> — Add <code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: 4 }}>OPENPR_API_KEY</code> in Vercel env vars for real scores (free at <strong>openpagerank.com</strong>).
+                  <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#92400e", lineHeight: 1.7 }}>
+                    📊 <strong>Live scores unavailable</strong> — scores below are estimates only.<br />
+                    To enable real PageRank data: <strong>1)</strong> Register free at{" "}
+                    <a href="https://openpagerank.com" target="_blank" rel="noreferrer" style={{ color: "#d97706", fontWeight: 700 }}>openpagerank.com</a>{" "}
+                    → copy your API key → <strong>2)</strong> In Vercel dashboard go to <em>Settings → Environment Variables</em> → add{" "}
+                    <code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: 4 }}>OPENPR_API_KEY</code> → <strong>3)</strong> Redeploy.
                   </div>
                 )}
 
@@ -1248,7 +1251,7 @@ export default function DashboardPage() {
       <RunCTA
         icon={Bot} accentColor="#06b6d4"
         title="AI Answer Preview"
-        desc="See exactly what Gemini says when someone asks your target queries. Brand mentions are highlighted green, competitors in red — so you can spot every gap instantly."
+        desc="See what AI assistants say when someone asks your target queries. Brand mentions are highlighted green, competitors in red — so you can spot every gap instantly."
         label="Run AI Answer Check"
         loading={answersLoading}
         onClick={runAnswers}
@@ -1290,8 +1293,18 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Legend */}
-        <div style={{ display: "flex", gap: 16, fontSize: 12, color: T3, alignItems: "center" }}>
+        {/* Legend + AI source badge */}
+        <div style={{ display: "flex", gap: 16, fontSize: 12, color: T3, alignItems: "center", flexWrap: "wrap" }}>
+          {answersData.ai_source && (
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
+              background: answersData.ai_source === "gemini" ? "#e0f2fe" : "#f3e8ff",
+              color:      answersData.ai_source === "gemini" ? "#0369a1" : "#7e22ce",
+              border:     `1px solid ${answersData.ai_source === "gemini" ? "#bae6fd" : "#d8b4fe"}`,
+            }}>
+              {answersData.ai_source === "gemini" ? "⚡ Powered by Gemini" : "🤖 Powered by Claude (Gemini rate-limited)"}
+            </span>
+          )}
           <span>Highlight key:</span>
           <span style={{ background: "#dcfce7", color: "#15803d", fontWeight: 700, padding: "2px 8px", borderRadius: 4 }}>{answersData.brand_name}</span>
           <span style={{ fontSize: 11 }}>= brand mention</span>
