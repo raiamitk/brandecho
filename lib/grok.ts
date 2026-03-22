@@ -2,8 +2,9 @@
 //  Claude (Anthropic) API integration — optimized for token efficiency
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
-const CLAUDE_MODEL   = "claude-sonnet-4-6";
+const CLAUDE_API_URL   = "https://api.anthropic.com/v1/messages";
+const CLAUDE_MODEL     = "claude-sonnet-4-6";          // used for visibility/briefs/gap
+const CLAUDE_MODEL_FAST = "claude-haiku-4-5-20251001"; // used for discovery (faster, fits Vercel 10s limit)
 
 async function claudeChat(systemPrompt: string, userPrompt: string, maxTokens = 4000): Promise<string> {
   const res = await fetch(CLAUDE_API_URL, {
@@ -31,7 +32,86 @@ async function claudeChat(systemPrompt: string, userPrompt: string, maxTokens = 
   return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
 }
 
-// ── Brand Discovery ──────────────────────────────────────────────────────────
+// ── ONE-SHOT discovery — brand + competitors + personas + queries + recs ──────
+// Uses Haiku (fastest model) to complete in ~6-8s, well within Vercel's 10s limit.
+
+export async function discoverAll(brandName: string, domain?: string) {
+  const res = await fetch(CLAUDE_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type":      "application/json",
+      "x-api-key":         process.env.ANTHROPIC_API_KEY!,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model:      CLAUDE_MODEL_FAST,
+      max_tokens: 4000,
+      system:     "You are a brand intelligence and AEO expert. Return ONLY valid JSON. No markdown, no explanation.",
+      messages: [{
+        role: "user",
+        content: `Analyse the brand "${brandName}"${domain ? ` (website: ${domain})` : ""} and return a single JSON object:
+
+{
+  "brand": {
+    "domain": "official domain",
+    "industry": "specific industry",
+    "description": "2-sentence description",
+    "brand_tone": "professional|casual|luxury|budget"
+  },
+  "competitors": [
+    {"name":"","domain":"","type":"direct|category_substitute","why":"one sentence"}
+  ],
+  "personas": [
+    {
+      "name":"The [Archetype]",
+      "archetype":"label",
+      "age_range":"22-35",
+      "income_level":"budget|mid|premium",
+      "pain_points":["p1","p2"],
+      "goals":["g1"],
+      "ai_tools_used":["ChatGPT"],
+      "query_style":"casual",
+      "queries": [
+        {
+          "text":"natural question a real user would type into ChatGPT — NO brand name",
+          "type":"aeo|geo|seo_longtail",
+          "intent":"awareness|consideration|comparison|purchase",
+          "revenue_proximity":75,
+          "citations":[
+            {"source":"Site Name","url_pattern":"domain.com","type":"forum|review_site|comparison_site|news|expert_guide|video","why":"one sentence"}
+          ]
+        }
+      ]
+    }
+  ],
+  "recommendations": [
+    {"title":"","description":"2 sentences","category":"aeo|seo|content|technical","priority":"high|medium|low","projected_lift":"+20%","action_label":"button text"}
+  ]
+}
+
+RULES:
+- 6 competitors (3 direct, 3 category_substitute)
+- 3 personas (one budget, one mid, one premium income level)
+- 4 queries per persona, zero brand name in any query text
+- 1 citation per query
+- 4 recommendations`,
+      }],
+    }),
+    signal: AbortSignal.timeout(9000),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Claude API error ${res.status}: ${err}`);
+  }
+
+  const data = await res.json();
+  const text = data.content[0].text.trim()
+    .replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  return JSON.parse(text);
+}
+
+// ── Brand Discovery (kept for backward compat) ────────────────────────────────
 
 export async function discoverBrandInfo(brandName: string, domain?: string) {
   const raw = await claudeChat(
