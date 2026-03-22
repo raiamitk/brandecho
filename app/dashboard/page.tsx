@@ -47,7 +47,7 @@ interface VisScore {
   revenue_proximity: number; claude_score: number; web_score: number;
   gemini_check: boolean; gemini_available: boolean; combined_score: number; reason: string;
 }
-interface VisResult { overall_score: number; gemini_available: boolean; results: VisScore[]; }
+interface VisResult { overall_score: number; gemini_available: boolean; ai_check_source?: string; results: VisScore[]; }
 
 interface Brief {
   query_id: string; query_text: string; recommended_title: string;
@@ -674,12 +674,26 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {/* AI check source badge */}
+        {visData.ai_check_source && visData.ai_check_source !== "none" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
+              background: visData.ai_check_source === "gemini" ? "#e0f2fe" : "#f3e8ff",
+              color:      visData.ai_check_source === "gemini" ? "#0369a1" : "#7e22ce",
+              border:     `1px solid ${visData.ai_check_source === "gemini" ? "#bae6fd" : "#d8b4fe"}`,
+            }}>
+              {visData.ai_check_source === "gemini" ? "⚡ Live check: Gemini" : "🤖 Live check: Claude (Gemini rate-limited)"}
+            </span>
+          </div>
+        )}
+
         {/* Scores table */}
         <div style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 110px 90px 130px",
             padding: "10px 20px", background: "#f3f4f6",
             fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            <span>Query</span><span>Claude</span><span>Gemini</span><span>Web</span><span>Combined</span>
+            <span>Query</span><span>Claude</span><span>AI Check</span><span>Web</span><span>Combined</span>
           </div>
           {scores.map((s, i) => (
             <div key={s.query_id} style={{ display: "grid", gridTemplateColumns: "1fr 90px 110px 90px 130px",
