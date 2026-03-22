@@ -49,42 +49,33 @@ export async function POST(req: NextRequest) {
         stepUpdate("personas",    "running", "Creating buyer personas...");
         stepUpdate("queries",     "running", "Generating target queries...");
 
-        // Resolve pointers so we can process whichever finishes first
-        let partAResult: Awaited<ReturnType<typeof discoverPartA>> | null = null;
-        let partBResult: Awaited<ReturnType<typeof discoverPartB>> | null = null;
+        // Both parts run in parallel; .then() fires SSE events the moment each finishes.
+        // Promise.all return values give TypeScript the correct inferred types.
+        const [partA, partB] = await Promise.all([
+          discoverPartA(brand_name, domain).then(result => {
+            stepUpdate("brand",       "done", `Industry: ${result.brand.industry}`);
+            stepUpdate("domain",      "done", `Domain: ${domain || result.brand.domain}`);
+            stepUpdate("competitors", "done", `Found ${result.competitors.length} competitors`);
+            stepUpdate("recs",        "done", `${result.recommendations.length} recommendations`);
+            send({ type: "data", key: "brand",       payload: result.brand });
+            send({ type: "data", key: "competitors", payload: result.competitors });
+            send({ type: "data", key: "recs",        payload: result.recommendations });
+            return result;
+          }),
+          discoverPartB(brand_name, domain).then(result => {
+            const allQueries = (result.personas || []).flatMap(p => p.queries || []);
+            stepUpdate("personas", "done", `Created ${result.personas.length} personas`);
+            stepUpdate("queries",  "done", `Generated ${allQueries.length} queries`);
+            send({ type: "data", key: "personas", payload: result.personas });
+            send({ type: "data", key: "queries",  payload: allQueries });
+            return result;
+          }),
+        ]);
 
-        const partAPromise = discoverPartA(brand_name, domain).then(result => {
-          partAResult = result;
-          // Send brand + competitor + rec data as soon as Part A is done
-          stepUpdate("brand",       "done", `Industry: ${result.brand.industry}`);
-          stepUpdate("domain",      "done", `Domain: ${domain || result.brand.domain}`);
-          stepUpdate("competitors", "done", `Found ${result.competitors.length} competitors`);
-          stepUpdate("recs",        "done", `${result.recommendations.length} recommendations`);
-          send({ type: "data", key: "brand",       payload: result.brand });
-          send({ type: "data", key: "competitors", payload: result.competitors });
-          send({ type: "data", key: "recs",        payload: result.recommendations });
-          return result;
-        });
-
-        const partBPromise = discoverPartB(brand_name, domain).then(result => {
-          partBResult = result;
-          const allQueries = (result.personas || []).flatMap(p => p.queries || []);
-          stepUpdate("personas", "done", `Created ${result.personas.length} personas`);
-          stepUpdate("queries",  "done", `Generated ${allQueries.length} queries`);
-          send({ type: "data", key: "personas", payload: result.personas });
-          send({ type: "data", key: "queries",  payload: allQueries });
-          return result;
-        });
-
-        // Wait for both to complete
-        await Promise.all([partAPromise, partBPromise]);
-
-        if (!partAResult || !partBResult) throw new Error("Discovery incomplete");
-
-        const brandInfo      = partAResult.brand;
-        const competitorData = partAResult.competitors    || [];
-        const recsData       = partAResult.recommendations || [];
-        const personaData    = partBResult.personas       || [];
+        const brandInfo      = partA.brand;
+        const competitorData = partA.competitors    || [];
+        const recsData       = partA.recommendations || [];
+        const personaData    = partB.personas       || [];
         const finalDomain    = domain || brandInfo.domain;
 
         // ── SAVE TO SUPABASE ─────────────────────────────────────────────────
