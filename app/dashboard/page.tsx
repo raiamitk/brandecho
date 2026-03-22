@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Eye, Sparkles, BarChart2, TrendingUp, Users, MessageSquare,
   Building2, Globe, Download, FileText, Zap, Gauge,
-  CheckCircle, XCircle, ChevronDown, ChevronUp, Copy, Check,
+  CheckCircle, XCircle, ChevronDown, ChevronUp, Copy, Check, Bot,
 } from "lucide-react";
 import type { Brand, Persona, Query, Competitor, Recommendation } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
@@ -31,9 +31,10 @@ const TYPE_STYLE: Record<string, { bg: string; color: string }> = {
 };
 
 // ── Tab config ────────────────────────────────────────────────────────────────
-type TabId = "scan" | "visibility" | "briefs" | "gap" | "technical";
+type TabId = "scan" | "visibility" | "briefs" | "gap" | "technical" | "answers";
 const TABS: { id: TabId; label: string; Icon: React.ElementType; accentColor: string; desc: string }[] = [
   { id: "scan",       label: "AEO / GEO Scan",    Icon: Zap,       accentColor: A,         desc: "Personas, queries, competitors & smart recommendations from your brand scan" },
+  { id: "answers",    label: "AI Answers",         Icon: Bot,       accentColor: "#06b6d4", desc: "See exactly what Gemini says when asked your target queries — brand & competitor mentions highlighted" },
   { id: "visibility", label: "AI Visibility",      Icon: Eye,       accentColor: A,         desc: "Score every query for AI citability — Claude + Gemini + web authority signals" },
   { id: "briefs",     label: "Content Briefs",     Icon: Sparkles,  accentColor: "#fbbf24", desc: "AI-optimised content briefs for your top queries — ready to publish" },
   { id: "gap",        label: "Competitor Gap",     Icon: BarChart2, accentColor: "#f87171", desc: "Queries where competitors appear in AI answers but your brand doesn't" },
@@ -57,6 +58,17 @@ interface Brief {
 interface GapRow {
   query_id: string; query_text: string; query_type: string;
   brand_appears: boolean; competitors_appear: string[]; gap_type: string; opportunity: string;
+}
+
+interface AnswerResult {
+  query_id: string; query_text: string; type: string; revenue_proximity: number;
+  answer: string; brand_mentioned: boolean; brand_mention_count: number;
+  competitors_mentioned: string[]; error: string | null;
+}
+interface AnswersData {
+  brand_name: string; competitor_names: string[]; total_queries: number;
+  brand_mentioned_count: number; competitor_only_count: number;
+  available: boolean; answers: AnswerResult[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -119,6 +131,9 @@ export default function DashboardPage() {
   const [briefsLoading,setBriefsLoading]= useState(false);
   const [gapData,      setGapData]      = useState<GapRow[]>([]);
   const [gapLoading,   setGapLoading]   = useState(false);
+  const [answersData,  setAnswersData]  = useState<AnswersData | null>(null);
+  const [answersLoading, setAnswersLoading] = useState(false);
+  const [answersError, setAnswersError] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [psData,         setPsData]         = useState<Record<string, any> | null>(null);
   const [psLoading,      setPsLoading]      = useState(false);
@@ -194,6 +209,19 @@ export default function DashboardPage() {
       setGapData(data.gaps || []);
     } catch (e) { console.error(e); }
     setGapLoading(false);
+  };
+
+  const runAnswers = async () => {
+    const brand_id = sessionStorage.getItem("brand_id");
+    if (!brand_id) return;
+    setAnswersLoading(true); setAnswersError(null);
+    try {
+      const res  = await fetch("/api/answers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id }) });
+      const data = await res.json();
+      if (data.error && !data.answers) throw new Error(data.error);
+      setAnswersData(data);
+    } catch (e) { setAnswersError(String(e)); }
+    setAnswersLoading(false);
   };
 
   const runPageSpeed = async () => {
@@ -1166,6 +1194,211 @@ export default function DashboardPage() {
   };
 
 
+  // ANSWERS TAB ─────────────────────────────────────────────────────────────
+  const AnswersTab = () => {
+    const [expandedAnswer, setExpandedAnswer] = useState<string | null>(null);
+
+    // Highlight brand (green) and competitors (red) within answer text
+    const HighlightedText = ({ text, brandName, competitorNames }: {
+      text: string; brandName: string; competitorNames: string[];
+    }) => {
+      if (!text) return <span />;
+      // Build regex from brand + all competitors
+      const terms = [brandName, ...competitorNames].filter(Boolean);
+      if (!terms.length) return <span style={{ fontSize: 13, color: T2, lineHeight: 1.7 }}>{text}</span>;
+      const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      const regex = new RegExp(`(${escaped.join("|")})`, "gi");
+      const parts = text.split(regex);
+      return (
+        <span style={{ fontSize: 13, color: T2, lineHeight: 1.7 }}>
+          {parts.map((part, i) => {
+            if (part.toLowerCase() === brandName.toLowerCase()) {
+              return <mark key={i} style={{ background: "#dcfce7", color: "#15803d", fontWeight: 700, borderRadius: 3, padding: "0 2px" }}>{part}</mark>;
+            }
+            if (competitorNames.some(c => c.toLowerCase() === part.toLowerCase())) {
+              return <mark key={i} style={{ background: "#fef2f2", color: "#dc2626", fontWeight: 700, borderRadius: 3, padding: "0 2px" }}>{part}</mark>;
+            }
+            return <span key={i}>{part}</span>;
+          })}
+        </span>
+      );
+    };
+
+    if (!answersData && !answersError) return (
+      <RunCTA
+        icon={Bot} accentColor="#06b6d4"
+        title="AI Answer Preview"
+        desc="See exactly what Gemini says when someone asks your target queries. Brand mentions are highlighted green, competitors in red — so you can spot every gap instantly."
+        label="Run AI Answer Check"
+        loading={answersLoading}
+        onClick={runAnswers}
+      />
+    );
+
+    if (answersError && !answersData) return (
+      <div style={{ textAlign: "center", padding: "48px 0" }}>
+        <div style={{ fontSize: 14, color: "#dc2626", marginBottom: 16 }}>⚠️ {answersError}</div>
+        <button onClick={runAnswers} style={{ background: "#06b6d4", color: "#fff", fontWeight: 700, padding: "10px 28px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13 }}>
+          Retry
+        </button>
+      </div>
+    );
+
+    if (!answersData) return null;
+
+    const answers = answersData.answers || [];
+    const brandCount = answersData.brand_mentioned_count;
+    const competitorOnly = answersData.competitor_only_count;
+    const total = answersData.total_queries;
+    const missedCount = total - brandCount;
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+        {/* Summary KPI chips */}
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          {[
+            { label: "Queries checked",      value: total,          bg: SURF,       color: T1 },
+            { label: "Brand appeared",        value: brandCount,     bg: "#f0fdf4",  color: "#15803d" },
+            { label: "Brand missing",         value: missedCount,    bg: "#fef2f2",  color: "#dc2626" },
+            { label: "Competitor-only gaps",  value: competitorOnly, bg: "#fffbeb",  color: "#d97706" },
+          ].map(({ label, value, bg, color }) => (
+            <div key={label} style={{ background: bg, border: `1px solid ${color}30`, borderRadius: 14, padding: "14px 20px", minWidth: 140 }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color, marginBottom: 2 }}>{value}</div>
+              <div style={{ fontSize: 12, color, fontWeight: 600 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Legend */}
+        <div style={{ display: "flex", gap: 16, fontSize: 12, color: T3, alignItems: "center" }}>
+          <span>Highlight key:</span>
+          <span style={{ background: "#dcfce7", color: "#15803d", fontWeight: 700, padding: "2px 8px", borderRadius: 4 }}>{answersData.brand_name}</span>
+          <span style={{ fontSize: 11 }}>= brand mention</span>
+          <span style={{ background: "#fef2f2", color: "#dc2626", fontWeight: 700, padding: "2px 8px", borderRadius: 4 }}>Competitor</span>
+          <span style={{ fontSize: 11 }}>= competitor mention</span>
+        </div>
+
+        {/* Answer cards */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {answers.map((a, i) => {
+            const open = expandedAnswer === a.query_id;
+            const ts = TYPE_STYLE[a.type] || TYPE_STYLE.seo;
+            const stage = a.revenue_proximity >= 90 ? { label: "Ready to Buy",  color: "#15803d", bg: "#f0fdf4" }
+                        : a.revenue_proximity >= 70 ? { label: "Evaluating",    color: "#1d4ed8", bg: "#eff6ff" }
+                        : a.revenue_proximity >= 50 ? { label: "Considering",   color: "#d97706", bg: "#fffbeb" }
+                        : a.revenue_proximity >= 20 ? { label: "Researching",   color: "#7c3aed", bg: "#f5f3ff" }
+                        :                             { label: "Awareness",     color: T3,        bg: SURF };
+            return (
+              <div key={a.query_id} style={{
+                border: `1px solid ${a.error ? BORD : a.brand_mentioned ? "#bbf7d0" : "#fecaca"}`,
+                borderLeft: `4px solid ${a.error ? BORD : a.brand_mentioned ? "#16a34a" : "#dc2626"}`,
+                borderRadius: 14, overflow: "hidden",
+                background: a.brand_mentioned ? "#fafffc" : "#fffafa",
+              }}>
+                {/* Card header — always visible */}
+                <button onClick={() => setExpandedAnswer(open ? null : a.query_id)}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 12,
+                    padding: "14px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+
+                  {/* Query number */}
+                  <div style={{ width: 24, height: 24, borderRadius: 8, background: a.brand_mentioned ? "#dcfce7" : "#fef2f2",
+                    color: a.brand_mentioned ? "#15803d" : "#dc2626", fontWeight: 800, fontSize: 12,
+                    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {i + 1}
+                  </div>
+
+                  {/* Query text */}
+                  <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: T1 }}>{a.query_text}</span>
+
+                  {/* Type badge */}
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
+                    background: ts.bg, color: ts.color, flexShrink: 0 }}>
+                    {a.type === "seo_longtail" ? "SEO" : a.type.toUpperCase()}
+                  </span>
+
+                  {/* Purchase stage badge */}
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
+                    background: stage.bg, color: stage.color, flexShrink: 0 }}>
+                    {stage.label}
+                  </span>
+
+                  {/* Brand mention badge */}
+                  {!a.error && (
+                    a.brand_mentioned
+                      ? <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700,
+                          padding: "3px 10px", borderRadius: 99, background: "#dcfce7", color: "#15803d", flexShrink: 0 }}>
+                          ✓ Brand mentioned {a.brand_mention_count > 1 ? `×${a.brand_mention_count}` : ""}
+                        </span>
+                      : <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700,
+                          padding: "3px 10px", borderRadius: 99, background: "#fef2f2", color: "#dc2626", flexShrink: 0 }}>
+                          ✗ Brand absent
+                        </span>
+                  )}
+
+                  {open
+                    ? <ChevronUp  style={{ width: 16, height: 16, color: T3, flexShrink: 0 }} />
+                    : <ChevronDown style={{ width: 16, height: 16, color: T3, flexShrink: 0 }} />}
+                </button>
+
+                {/* Competitor mentions strip (always visible if any) */}
+                {!a.error && a.competitors_mentioned.length > 0 && (
+                  <div style={{ padding: "0 16px 10px 52px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: T3 }}>Competitors in answer:</span>
+                    {a.competitors_mentioned.map((c, ci) => (
+                      <span key={ci} style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
+                        background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>{c}</span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Expanded answer text */}
+                {open && (
+                  <div style={{ padding: "12px 16px 16px", borderTop: `1px dashed ${BORD}` }}>
+                    {a.error ? (
+                      <div style={{ fontSize: 13, color: "#dc2626", fontStyle: "italic" }}>
+                        ⚠️ Could not fetch Gemini answer: {a.error}
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase",
+                          letterSpacing: "0.5px", marginBottom: 8 }}>
+                          🤖 Gemini Answer
+                        </div>
+                        <div style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 10, padding: "14px 16px" }}>
+                          <HighlightedText
+                            text={a.answer}
+                            brandName={answersData.brand_name}
+                            competitorNames={answersData.competitor_names}
+                          />
+                        </div>
+                        {!a.brand_mentioned && (
+                          <div style={{ marginTop: 10, background: "#fffbeb", border: "1px solid #fde68a",
+                            borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#92400e" }}>
+                            💡 <strong>Gap identified:</strong> {answersData.brand_name} wasn't mentioned. Create authoritative content targeting this query to earn AI citations.
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Re-run button */}
+        <button onClick={runAnswers} disabled={answersLoading}
+          style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8,
+            background: "#06b6d4", color: "#fff", fontWeight: 700, padding: "11px 24px",
+            borderRadius: 10, border: "none", cursor: answersLoading ? "default" : "pointer",
+            fontSize: 13, opacity: answersLoading ? 0.7 : 1 }}>
+          {answersLoading ? "Running…" : "🔄 Re-run AI Answers"}
+        </button>
+      </div>
+    );
+  };
+
   const activeTab = TABS.find(t => t.id === tab)!;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1187,6 +1420,11 @@ export default function DashboardPage() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => router.push("/brands")}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px",
+                borderRadius: 8, border: `1px solid ${BORD}`, background: SURF, color: T3, fontSize: 13, cursor: "pointer" }}>
+              ← My Brands
+            </button>
             <button onClick={() => {
               const rows = [
                 ["BrandEcho Report", brand?.name, ""],
@@ -1242,6 +1480,7 @@ export default function DashboardPage() {
       {/* Main content */}
       <main style={{ maxWidth: 1140, margin: "0 auto", padding: "36px 28px" }}>
         {tab === "scan"       && <ScanTab />}
+        {tab === "answers"    && <AnswersTab />}
         {tab === "visibility" && <VisibilityTab />}
         {tab === "briefs"     && <BriefsTab />}
         {tab === "gap"        && <GapTab />}

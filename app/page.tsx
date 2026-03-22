@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Bot, TrendingUp, Globe, ArrowRight, Sparkles } from "lucide-react";
+import { Search, Bot, TrendingUp, Globe, ArrowRight, Sparkles, Building2 } from "lucide-react";
+import { loadSavedBrands, type SavedBrand } from "@/app/brands/page";
 
 const A  = "#00FF96";
 const AT = "#059669"; // accent text — readable on white
@@ -11,8 +12,11 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [brandName, setBrandName] = useState("");
   const [domain,    setDomain]    = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error,     setError]     = useState("");
+  const [isLoading,    setIsLoading]    = useState(false);
+  const [error,        setError]        = useState("");
+  const [savedBrands,  setSavedBrands]  = useState<SavedBrand[]>([]);
+
+  useEffect(() => { setSavedBrands(loadSavedBrands().slice(0, 4)); }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +139,50 @@ export default function OnboardingPage() {
           </div>
         </div>
       </main>
+
+      {/* Saved Brands Strip */}
+      {savedBrands.length > 0 && (
+        <div style={{ borderTop: "1px solid #e5e7eb", padding: "20px 28px", background: "#f9fafb" }}>
+          <div style={{ maxWidth: 640, margin: "0 auto" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Recent Brands
+              </span>
+              <button onClick={() => router.push("/brands")}
+                style={{ fontSize: 12, color: AT, fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}>
+                View all →
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {savedBrands.map(b => (
+                <button key={b.id} onClick={() => {
+                  sessionStorage.setItem("brand_id", b.id);
+                  router.push("/dashboard");
+                }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
+                  background: "#fff", border: "1px solid #e5e7eb", borderRadius: 99,
+                  cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#111827",
+                  transition: "border-color 0.15s" }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = A}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = "#e5e7eb"}>
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: A,
+                    color: "#111", fontWeight: 800, fontSize: 11,
+                    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {b.name.charAt(0).toUpperCase()}
+                  </div>
+                  {b.name}
+                  <ArrowRight style={{ width: 13, height: 13, color: "#9ca3af" }} />
+                </button>
+              ))}
+              <button onClick={() => router.push("/brands")}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
+                  background: "none", border: "1px dashed #d1d5db", borderRadius: 99,
+                  cursor: "pointer", fontSize: 13, color: AT, fontWeight: 600 }}>
+                <Building2 style={{ width: 13, height: 13 }} /> All brands
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="pb-12 px-6">
         <div className="max-w-2xl mx-auto flex flex-wrap justify-center gap-3">

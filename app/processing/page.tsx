@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { saveBrand } from "@/app/brands/page";
 
 const A  = "#00FF96";
 const AT = "#059669";
@@ -55,7 +56,18 @@ export default function ProcessingPage() {
           if (!json || json === "[DONE]") continue;
           const event = JSON.parse(json);
           if (event.type === "step_update") updateStep(event.step_id, event.status, event.detail);
-          if (event.type === "complete") { sessionStorage.setItem("brand_id", event.brand_id); setTimeout(() => router.push("/dashboard"), 600); }
+          if (event.type === "complete") {
+            sessionStorage.setItem("brand_id", event.brand_id);
+            // Save to localStorage for multi-brand switcher
+            saveBrand({
+              id:         event.brand_id,
+              name:       sessionStorage.getItem("brand_name") || "",
+              industry:   event.industry || "",
+              domain:     sessionStorage.getItem("brand_domain") || "",
+              scanned_at: new Date().toISOString(),
+            });
+            setTimeout(() => router.push("/dashboard"), 600);
+          }
           if (event.type === "error") setError(event.message);
         }
       }
