@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
 
     // Load brand + queries from Supabase
     const [brandRes, queryRes, compRes] = await Promise.all([
-      supabase.from("brands").select("name, industry").eq("id", brand_id).single(),
+      supabase.from("brands").select("name, industry, description").eq("id", brand_id).single(),
       supabase.from("queries").select("id, text, type, intent, revenue_proximity").eq("brand_id", brand_id),
       supabase.from("competitors").select("name, type").eq("brand_id", brand_id),
     ]);
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const queries   = queryRes.data || [];
 
     // ── Step 1: Claude batch scores all queries in ONE API call ────────────────
-    const claudeScores = await scoreQueryVisibility(brand.name, brand.industry, queries);
+    const claudeScores = await scoreQueryVisibility(brand.name, brand.industry, queries, brand.description);
 
     // ── Step 2: Gemini check — only top 5 by revenue_proximity (free tier safe)
     const top5 = [...queries].sort((a, b) => b.revenue_proximity - a.revenue_proximity).slice(0, 5);

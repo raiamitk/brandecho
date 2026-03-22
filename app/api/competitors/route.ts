@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     if (!brand_id) return NextResponse.json({ error: "brand_id required" }, { status: 400 });
 
     const [brandRes, queryRes, compRes] = await Promise.all([
-      supabase.from("brands").select("name, industry").eq("id", brand_id).single(),
+      supabase.from("brands").select("name, industry, description").eq("id", brand_id).single(),
       supabase.from("queries").select("id, text, type, intent").eq("brand_id", brand_id),
       supabase.from("competitors").select("name, type").eq("brand_id", brand_id),
     ]);
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     const competitors = compRes.data   || [];
 
     // ONE Claude call analyses all gaps
-    const gaps = await analyzeCompetitorGaps(brand.name, competitors, queries);
+    const gaps = await analyzeCompetitorGaps(brand.name, competitors, queries, brand.description);
 
     // Enrich with query text for display
     const queryMap = Object.fromEntries(queries.map(q => [q.id, q]));
