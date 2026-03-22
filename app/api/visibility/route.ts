@@ -37,19 +37,25 @@ export async function POST(req: NextRequest) {
       try {
         const GURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent";
         const queryLines = top5.map((q, i) => `${i + 1}. ${q.text}`).join("\n");
-        const gRes = await fetch(`${GURL}?key=${apiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text:
-              `For each question below, answer as you normally would (2-3 sentences). Be factual and mention relevant brands by name.\n\n${queryLines}\n\nFormat: answer each question numbered, matching the question numbers above.`
-            }] }],
-            generationConfig: { maxOutputTokens: 2000, temperature: 0.2 },
-          }),
-          signal: AbortSignal.timeout(20000),
+        const gBody = JSON.stringify({
+          contents: [{ parts: [{ text:
+            `For each question below, answer as you normally would (2-3 sentences). Be factual and mention relevant brands by name.\n\n${queryLines}\n\nFormat: answer each question numbered, matching the question numbers above.`
+          }] }],
+          generationConfig: { maxOutputTokens: 2000, temperature: 0.2 },
         });
 
-        if (gRes.ok) {
+        // Retry up to 2 times on 429
+        let gRes: Response | null = null;
+        for (let attempt = 0; attempt <= 2; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 4000));
+          gRes = await fetch(`${GURL}?key=${apiKey}`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: gBody, signal: AbortSignal.timeout(20000),
+          });
+          if (gRes.status !== 429) break;
+        }
+
+        if (gRes && gRes.ok) {
           const gData  = await gRes.json();
           const gText: string = gData.candidates?.[0]?.content?.parts?.[0]?.text || "";
           const brandLow = brand.name.toLowerCase();

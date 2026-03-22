@@ -66,33 +66,43 @@ Return ONLY a valid JSON array with exactly ${queries.length} objects, one per q
 ]
 No markdown, no explanation outside the JSON array.`;
 
-    const geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: 3500,
-          temperature: 0.3,
-        },
-      }),
-      signal: AbortSignal.timeout(30000),
+    // Retry up to 3 times on 429 rate-limit with exponential backoff
+    const geminiBody = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 3500, temperature: 0.3 },
     });
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      // Return partial data with error so the UI can show a useful message
+    let geminiRes: Response | null = null;
+    let lastStatus = 0;
+    const DELAYS = [3000, 7000, 15000]; // 3s, 7s, 15s
+    for (let attempt = 0; attempt <= 3; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, DELAYS[attempt - 1]));
+      geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: geminiBody,
+        signal: AbortSignal.timeout(30000),
+      });
+      lastStatus = geminiRes.status;
+      if (geminiRes.status !== 429) break; // success or non-retryable error
+    }
+
+    if (!geminiRes || !geminiRes.ok) {
+      const errText = geminiRes ? await geminiRes.text() : "No response";
+      const userMsg = lastStatus === 429
+        ? "Gemini rate limit reached — please wait a minute and try again"
+        : `Gemini ${lastStatus}: ${errText.slice(0, 200)}`;
       return NextResponse.json({
         brand_name: brandName, competitor_names: competitorNames,
         total_queries: queries.length, brand_mentioned_count: 0, competitor_only_count: 0,
         available: false,
-        error: `Gemini ${geminiRes.status}: ${errText.slice(0, 200)}`,
+        error: userMsg,
         answers: queries.map(q => ({
           query_id: q.id, query_text: q.text, type: q.type,
           revenue_proximity: q.revenue_proximity,
           answer: "", brand_mentioned: false, brand_mention_count: 0,
           competitors_mentioned: [] as string[],
-          error: `Gemini API returned ${geminiRes.status}`,
+          error: userMsg,
         })),
       });
     }
