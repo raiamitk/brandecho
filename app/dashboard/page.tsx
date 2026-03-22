@@ -407,6 +407,26 @@ export default function DashboardPage() {
     </div>
   );
 
+  // ── Brand not found — stale cache or deleted record ────────────────────────
+  if (!brand) return (
+    <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <div style={{ width: 64, height: 64, borderRadius: 20, background: "rgba(0,255,150,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Building2 style={{ width: 28, height: 28, color: A }} />
+      </div>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: T1, margin: 0 }}>Brand data not found</h2>
+      <p style={{ fontSize: 14, color: T3, margin: 0, textAlign: "center", maxWidth: 360 }}>
+        This brand&apos;s scan data may have expired or been removed. Re-scan to get fresh results.
+      </p>
+      <button onClick={() => router.push("/")}
+        style={{ background: A, color: "#111", fontWeight: 700, padding: "12px 32px",
+          borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14,
+          display: "inline-flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+        ← Re-scan this brand
+      </button>
+    </div>
+  );
+
   // ── Tab renders ────────────────────────────────────────────────────────────
 
   // SCAN TAB ─────────────────────────────────────────────────────────────────

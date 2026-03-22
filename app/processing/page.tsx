@@ -75,21 +75,9 @@ export default function ProcessingPage() {
     setBrandName(displayName);
     setBrandDomain(domain);
 
-    // ── Fast path: already scanned? Skip API and jump to dashboard ──────────
-    const saved = loadSavedBrands();
-    const norm = (u: string) =>
-      u.replace(/https?:\/\/(www\.)?/, "").replace(/\/$/, "").toLowerCase();
-    const existing = saved.find(b =>
-      norm(b.domain || "") === norm(domain) ||
-      (b.name || "").toLowerCase() === displayName.toLowerCase()
-    );
-    if (existing) {
-      sessionStorage.setItem("brand_id",   existing.id);
-      sessionStorage.setItem("brand_name", existing.name);
-      router.push("/dashboard");
-      return;
-    }
-
+    // No client-side fast-path — the server-side Supabase cache in /api/discover
+    // handles previously-scanned brands instantly (< 1s). Skipping the client
+    // cache avoids stale localStorage IDs pointing to deleted Supabase records.
     runDiscovery(displayName, domain);
   }, []);
 
@@ -124,12 +112,15 @@ export default function ProcessingPage() {
           }
 
           if (event.type === "complete") {
-            sessionStorage.setItem("brand_id", event.brand_id);
+            const finalName   = event.brand_name   || sessionStorage.getItem("brand_name")   || name;
+            const finalDomain = event.brand_domain || sessionStorage.getItem("brand_domain") || domain;
+            sessionStorage.setItem("brand_id",   event.brand_id);
+            sessionStorage.setItem("brand_name", finalName);
             saveBrand({
               id:         event.brand_id,
-              name:       sessionStorage.getItem("brand_name") || name,
+              name:       finalName,
               industry:   event.industry || liveBrand?.industry || "",
-              domain:     sessionStorage.getItem("brand_domain") || domain,
+              domain:     finalDomain,
               scanned_at: new Date().toISOString(),
             });
             setTimeout(() => router.push("/dashboard"), 800);

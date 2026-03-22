@@ -31,13 +31,13 @@ export async function POST(req: NextRequest) {
         // ── CACHE CHECK ──────────────────────────────────────────────────────
         stepUpdate("brand", "running", "Checking cache...");
         const { data: cached } = await supabase
-          .from("brands").select("id").ilike("name", brand_name.trim()).maybeSingle();
+          .from("brands").select("id, name, industry, domain").ilike("name", brand_name.trim()).maybeSingle();
 
         if (cached) {
           ["brand","domain","competitors","personas","queries","recs","save"].forEach(id =>
             stepUpdate(id, "done", id === "brand" ? "Loaded from cache!" : "Cached ✓")
           );
-          send({ type: "complete", brand_id: cached.id });
+          send({ type: "complete", brand_id: cached.id, industry: cached.industry, brand_name: cached.name, brand_domain: cached.domain });
           controller.close();
           return;
         }
