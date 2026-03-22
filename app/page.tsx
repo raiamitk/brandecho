@@ -12,12 +12,27 @@ const A  = "#00FF96";
 const AT = "#059669";
 
 // ── Derive brand name from a URL ─────────────────────────────────────────────
+// Handles product URLs like /collections/surf, /brands/dove, /products/omo
+const PATH_PREFIXES = ["collections","brands","products","product","brand","shop","range","line","series"];
+
 function deriveBrandName(url: string): string {
   try {
-    const raw = url.startsWith("http") ? url : `https://${url}`;
-    const hostname = new URL(raw).hostname.replace(/^www\./, "");
-    const part = hostname.split(".")[0]; // "nykaa" from "nykaa.com"
-    return part.charAt(0).toUpperCase() + part.slice(1);
+    const raw      = url.startsWith("http") ? url : `https://${url}`;
+    const parsed   = new URL(raw);
+    const hostname = parsed.hostname.replace(/^www\./, "");
+    const segments = parsed.pathname.split("/").filter(Boolean);
+
+    // If path has a known category prefix followed by a name, use that name
+    for (let i = 0; i < segments.length - 1; i++) {
+      if (PATH_PREFIXES.includes(segments[i].toLowerCase())) {
+        const name = segments[i + 1];
+        return name.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      }
+    }
+
+    // Fall back to first meaningful hostname segment
+    const part = hostname.split(".")[0].replace(/-/g, " ");
+    return part.replace(/\b\w/g, c => c.toUpperCase());
   } catch {
     return url.replace(/https?:\/\/(www\.)?/, "").split(".")[0] || url;
   }
@@ -72,35 +87,45 @@ const FEATURES = [
 export default function OnboardingPage() {
   const router = useRouter();
   const [url,          setUrl]          = useState("");
+  const [brandOverride,setBrandOverride]= useState("");   // user-editable brand name
   const [isLoading,    setIsLoading]    = useState(false);
   const [error,        setError]        = useState("");
   const [savedBrands,  setSavedBrands]  = useState<SavedBrand[]>([]);
 
   useEffect(() => { setSavedBrands(loadSavedBrands().slice(0, 4)); }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = url.trim();
-    if (!trimmed) { setError("Please enter your website URL"); return; }
-
-    // Normalise URL — ensure it has a scheme
-    const normalised = trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
-
-    let hostname = "";
-    try {
-      hostname = new URL(normalised).hostname;
-    } catch {
-      setError("Looks like an invalid URL — try https://yourbrand.com");
-      return;
+  // Auto-populate brand name when URL changes
+  const handleUrlChange = (val: string) => {
+    setUrl(val);
+    setError("");
+    if (val.trim()) {
+      const derived = deriveBrandName(val.trim());
+      setBrandOverride(derived);
+    } else {
+      setBrandOverride("");
     }
+  };
 
-    const brandName = deriveBrandName(normalised);
+  // Core submit logic — separated so pills can call it directly
+  const submitUrl = (rawUrl: string, rawBrand?: string) => {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) { setError("Please enter your website URL"); return; }
+    const normalised = trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+    let hostname = "";
+    try { hostname = new URL(normalised).hostname; }
+    catch { setError("Invalid URL — try https://yourbrand.com"); return; }
+    const brandName = (rawBrand || brandOverride || deriveBrandName(normalised)).trim();
     setIsLoading(true);
     setError("");
-    sessionStorage.setItem("brand_name",   brandName);
-    sessionStorage.setItem("brand_domain", normalised);
+    sessionStorage.setItem("brand_name",     brandName);
+    sessionStorage.setItem("brand_domain",   normalised);
     sessionStorage.setItem("brand_hostname", hostname);
     router.push("/processing");
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitUrl(url);
   };
 
   return (
@@ -169,8 +194,8 @@ export default function OnboardingPage() {
             <input
               type="text"
               value={url}
-              onChange={e => { setUrl(e.target.value); setError(""); }}
-              placeholder="yourbrand.com  or  https://yourbrand.com"
+              onChange={e => handleUrlChange(e.target.value)}
+              placeholder="yourbrand.com  or  paste any product URL"
               autoFocus
               style={{ flex: 1, padding: "18px 16px", fontSize: 16, border: "none",
                 outline: "none", color: "#111827", background: "transparent" }}
@@ -193,17 +218,44 @@ export default function OnboardingPage() {
               )}
             </button>
           </div>
+          {/* Brand name override — auto-filled but always editable */}
+          {brandOverride && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8,
+              marginTop: 10, padding: "8px 14px",
+              background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 10 }}>
+              <span style={{ fontSize: 12, color: AT, fontWeight: 600, whiteSpace: "nowrap" }}>
+                Brand name:
+              </span>
+              <input
+                type="text"
+                value={brandOverride}
+                onChange={e => setBrandOverride(e.target.value)}
+                style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "#111827",
+                  background: "transparent", border: "none", outline: "none" }}
+              />
+              <span style={{ fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>
+                ✏️ edit if wrong
+              </span>
+            </div>
+          )}
+
           {error && (
             <p style={{ color: "#dc2626", fontSize: 13, marginTop: 8, paddingLeft: 4 }}>{error}</p>
           )}
         </form>
 
-        {/* Quick examples */}
+        {/* Quick examples — clicking auto-submits */}
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center",
           gap: 8, marginBottom: 64 }}>
           <span style={{ fontSize: 13, color: "#9ca3af", marginRight: 4, lineHeight: "30px" }}>Try:</span>
-          {["nykaa.com", "swiggy.com", "zepto.com", "zerodha.com", "myntra.com"].map(ex => (
-            <button key={ex} onClick={() => setUrl(ex)}
+          {[
+            { url: "nykaa.com",      brand: "Nykaa"    },
+            { url: "swiggy.com",     brand: "Swiggy"   },
+            { url: "zepto.com",      brand: "Zepto"    },
+            { url: "zerodha.com",    brand: "Zerodha"  },
+            { url: "myntra.com",     brand: "Myntra"   },
+          ].map(ex => (
+            <button key={ex.url} onClick={() => { setUrl(ex.url); setBrandOverride(ex.brand); submitUrl(ex.url, ex.brand); }}
               style={{ fontSize: 13, fontWeight: 600, color: AT, background: "none",
                 border: "1px solid rgba(0,200,120,0.3)", borderRadius: 99, padding: "4px 12px",
                 cursor: "pointer", transition: "border-color 0.15s, background 0.15s" }}
@@ -215,7 +267,7 @@ export default function OnboardingPage() {
                 (e.currentTarget as HTMLElement).style.background = "none";
                 (e.currentTarget as HTMLElement).style.borderColor = "rgba(0,200,120,0.3)";
               }}>
-              {ex}
+              {ex.brand}
             </button>
           ))}
         </div>

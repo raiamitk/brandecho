@@ -4,8 +4,9 @@
 //  Get key at: https://aistudio.google.com/app/apikey
 // ─────────────────────────────────────────────────────────────────────────────
 
+// gemini-1.5-flash: 15 RPM, 1M TPM, 1500 RPD (free) — 7.5× more daily quota than 2.0-flash
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
 export interface GeminiVisibilityResult {
   mentioned: boolean;

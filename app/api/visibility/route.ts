@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { scoreQueryVisibility } from "@/lib/grok";
-import { checkGeminiVisibility } from "@/lib/gemini";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,16 +27,51 @@ export async function POST(req: NextRequest) {
     // ── Step 1: Claude batch scores all queries in ONE API call ────────────────
     const claudeScores = await scoreQueryVisibility(brand.name, brand.industry, queries, brand.description);
 
-    // ── Step 2: Gemini check — only top 5 by revenue_proximity (free tier safe)
+    // ── Step 2: Gemini check — ONE batched call for top 5 queries ─────────────
+    // Batching avoids the 429 rate limit that hits when firing 5 parallel requests.
     const top5 = [...queries].sort((a, b) => b.revenue_proximity - a.revenue_proximity).slice(0, 5);
     const geminiResults: Record<string, { mentioned: boolean; score: number; excerpt: string; available: boolean }> = {};
 
-    await Promise.all(
-      top5.map(async (q) => {
-        const result = await checkGeminiVisibility(q.text, brand.name);
-        geminiResults[q.id] = result;
-      })
-    );
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey && apiKey !== "YOUR_GEMINI_API_KEY") {
+      try {
+        const GURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+        const queryLines = top5.map((q, i) => `${i + 1}. ${q.text}`).join("\n");
+        const gRes = await fetch(`${GURL}?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text:
+              `For each question below, answer as you normally would (2-3 sentences). Be factual and mention relevant brands by name.\n\n${queryLines}\n\nFormat: answer each question numbered, matching the question numbers above.`
+            }] }],
+            generationConfig: { maxOutputTokens: 2000, temperature: 0.2 },
+          }),
+          signal: AbortSignal.timeout(20000),
+        });
+
+        if (gRes.ok) {
+          const gData  = await gRes.json();
+          const gText: string = gData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          const brandLow = brand.name.toLowerCase();
+
+          // Split response by numbered answers and map back to query IDs
+          const sections = gText.split(/\n(?=\d+\.)/);
+          top5.forEach((q, i) => {
+            const section  = sections[i] || sections[sections.length - 1] || "";
+            const lower    = section.toLowerCase();
+            const mentions = (lower.match(new RegExp(brandLow.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []).length;
+            geminiResults[q.id] = {
+              mentioned: mentions > 0,
+              excerpt:   section.slice(0, 250).trim(),
+              score:     mentions >= 3 ? 100 : mentions === 2 ? 75 : mentions === 1 ? 50 : 0,
+              available: true,
+            };
+          });
+        }
+      } catch (e) {
+        console.warn("Gemini batch visibility check failed:", e);
+      }
+    }
 
     // ── Step 3: Build combined results ─────────────────────────────────────────
     const results = queries.map((q) => {

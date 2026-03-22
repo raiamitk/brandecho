@@ -7,8 +7,9 @@ import { createClient } from "@supabase/supabase-js";
 
 export const maxDuration = 55;
 
+// gemini-1.5-flash: 1500 RPD free tier (vs 200 RPD for 2.0-flash)
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -73,7 +74,6 @@ No markdown, no explanation outside the JSON array.`;
         generationConfig: {
           maxOutputTokens: 3500,
           temperature: 0.3,
-          responseMimeType: "application/json",
         },
       }),
       signal: AbortSignal.timeout(30000),
