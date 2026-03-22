@@ -111,6 +111,24 @@ function RunCTA({ icon: Icon, title, desc, accentColor, label, loading, onClick 
   );
 }
 
+function ReRunBar({ label, loading, onClick, accentColor = A }: {
+  label: string; loading: boolean; onClick: () => void; accentColor?: string;
+}) {
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+      <button onClick={onClick} disabled={loading}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6,
+          fontSize: 12, fontWeight: 700, color: loading ? T3 : accentColor,
+          background: "none", border: `1px solid ${loading ? BORD : accentColor}`,
+          borderRadius: 8, padding: "5px 14px", cursor: loading ? "default" : "pointer",
+          opacity: loading ? 0.6 : 1, transition: "all 0.15s" }}>
+        <span style={{ fontSize: 14, lineHeight: 1 }}>↺</span>
+        {loading ? "Running…" : label}
+      </button>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
@@ -659,6 +677,8 @@ export default function DashboardPage() {
     const gaps   = scores.filter(s => s.combined_score < 40).length;
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <ReRunBar label="Re-run Visibility" loading={visLoading} accentColor={A}
+          onClick={() => { setVisData(null); runVisibility(); }} />
         {/* Score cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
           {[
@@ -747,6 +767,8 @@ export default function DashboardPage() {
     const IMPACT_COLOR: Record<string, string> = { high: "#dc2626", medium: "#d97706", low: "#15803d" };
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <ReRunBar label="Re-generate Briefs" loading={briefsLoading} accentColor="#fbbf24"
+          onClick={() => { setBriefsData([]); runBriefs(); }} />
         {briefsData.map(b => {
           const open = expandedBrief === b.query_id;
           return (
@@ -852,6 +874,8 @@ export default function DashboardPage() {
     const strongCount  = gapData.filter(g => g.gap_type === "strong").length;
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <ReRunBar label="Re-run Gap Analysis" loading={gapLoading} accentColor="#f87171"
+          onClick={() => { setGapData([]); runGap(); }} />
         {/* Summary chips */}
         <div style={{ display: "flex", gap: 12 }}>
           {[
@@ -966,6 +990,8 @@ export default function DashboardPage() {
             const dScore        = psData.desktop_score;
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                <ReRunBar label="Re-run PageSpeed" loading={psLoading} accentColor="#818cf8"
+                  onClick={() => { setPsData(null); setPsError(null); runPageSpeed(); }} />
                 {/* Scores */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, maxWidth: 360 }}>
                   {[{ label: "Mobile", score: mScore, icon: "📱" }, { label: "Desktop", score: dScore, icon: "🖥️" }].map(({ label, score, icon }) => (
@@ -1075,6 +1101,8 @@ export default function DashboardPage() {
             const IMP_BG:    Record<string, string> = { critical: "#fef2f2", high: "#fffbeb", medium: "#f0fdf4", low: "#f9fafb" };
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                <ReRunBar label="Re-run Schema Check" loading={schemaLoading} accentColor="#06b6d4"
+                  onClick={() => { setSchemaData(null); setSchemaError(null); runSchemaCheck(); }} />
                 {/* Summary row */}
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   {[
@@ -1166,6 +1194,8 @@ export default function DashboardPage() {
             const apiAvail = authData.api_available;
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                <ReRunBar label="Re-check Authority" loading={authLoading} accentColor="#f59e0b"
+                  onClick={() => { setAuthData(null); setAuthError(null); runAuthorityCheck(); }} />
                 {!apiAvail && (
                   <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#92400e", lineHeight: 1.7 }}>
                     📊 <strong>Live scores unavailable</strong> — scores below are estimates only.<br />
@@ -1291,6 +1321,8 @@ export default function DashboardPage() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <ReRunBar label="Re-run AI Answers" loading={answersLoading} accentColor="#06b6d4"
+          onClick={() => { setAnswersData(null); setAnswersError(null); runAnswers(); }} />
 
         {/* Summary KPI chips */}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
