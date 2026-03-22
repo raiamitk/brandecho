@@ -1,13 +1,18 @@
 import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
-import { discoverAll } from "@/lib/grok";
+import { discoverPartA, discoverPartB } from "@/lib/grok";
+
+// ── Discover route — runs Part A (brand+competitors+recs) and Part B
+// (personas+queries) in PARALLEL. As soon as each finishes it sends a
+// "data" SSE event so the processing page can show widgets immediately.
+// Total time ~12-15s instead of the previous 25-40s single-call approach.
+
+export const runtime     = "nodejs";
+export const maxDuration = 60;
 
 function sse(event: object): string {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
-
-export const runtime     = "nodejs";
-export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const { brand_name, domain } = await req.json();
@@ -23,13 +28,10 @@ export async function POST(req: NextRequest) {
         send({ type: "step_update", step_id, status, detail });
 
       try {
-        // ── CACHE CHECK ───────────────────────────────────────────────────────
+        // ── CACHE CHECK ──────────────────────────────────────────────────────
         stepUpdate("brand", "running", "Checking cache...");
         const { data: cached } = await supabase
-          .from("brands")
-          .select("id")
-          .ilike("name", brand_name.trim())
-          .maybeSingle();
+          .from("brands").select("id").ilike("name", brand_name.trim()).maybeSingle();
 
         if (cached) {
           ["brand","domain","competitors","personas","queries","recs","save"].forEach(id =>
@@ -40,37 +42,52 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        // ── SINGLE AI CALL — all data in one shot ─────────────────────────────
-        stepUpdate("brand",       "running", "Analysing brand with AI...");
+        // ── FIRE BOTH PARTS IN PARALLEL ──────────────────────────────────────
+        stepUpdate("brand",       "running", "AI analysing brand profile...");
         stepUpdate("competitors", "running", "Finding competitors...");
-        stepUpdate("personas",    "running", "Generating personas...");
-        stepUpdate("queries",     "running", "Generating queries...");
         stepUpdate("recs",        "running", "Building recommendations...");
+        stepUpdate("personas",    "running", "Creating buyer personas...");
+        stepUpdate("queries",     "running", "Generating target queries...");
 
-        const result = await discoverAll(brand_name, domain);
+        // Resolve pointers so we can process whichever finishes first
+        let partAResult: Awaited<ReturnType<typeof discoverPartA>> | null = null;
+        let partBResult: Awaited<ReturnType<typeof discoverPartB>> | null = null;
 
-        const brandInfo      = result.brand;
-        const competitorData = result.competitors  || [];
-        const personaData    = result.personas     || [];
-        const recsData       = result.recommendations || [];
+        const partAPromise = discoverPartA(brand_name, domain).then(result => {
+          partAResult = result;
+          // Send brand + competitor + rec data as soon as Part A is done
+          stepUpdate("brand",       "done", `Industry: ${result.brand.industry}`);
+          stepUpdate("domain",      "done", `Domain: ${domain || result.brand.domain}`);
+          stepUpdate("competitors", "done", `Found ${result.competitors.length} competitors`);
+          stepUpdate("recs",        "done", `${result.recommendations.length} recommendations`);
+          send({ type: "data", key: "brand",       payload: result.brand });
+          send({ type: "data", key: "competitors", payload: result.competitors });
+          send({ type: "data", key: "recs",        payload: result.recommendations });
+          return result;
+        });
+
+        const partBPromise = discoverPartB(brand_name, domain).then(result => {
+          partBResult = result;
+          const allQueries = (result.personas || []).flatMap(p => p.queries || []);
+          stepUpdate("personas", "done", `Created ${result.personas.length} personas`);
+          stepUpdate("queries",  "done", `Generated ${allQueries.length} queries`);
+          send({ type: "data", key: "personas", payload: result.personas });
+          send({ type: "data", key: "queries",  payload: allQueries });
+          return result;
+        });
+
+        // Wait for both to complete
+        await Promise.all([partAPromise, partBPromise]);
+
+        if (!partAResult || !partBResult) throw new Error("Discovery incomplete");
+
+        const brandInfo      = partAResult.brand;
+        const competitorData = partAResult.competitors    || [];
+        const recsData       = partAResult.recommendations || [];
+        const personaData    = partBResult.personas       || [];
         const finalDomain    = domain || brandInfo.domain;
 
-        stepUpdate("brand",       "done", `Industry: ${brandInfo.industry}`);
-        stepUpdate("domain",      "done", `Domain: ${finalDomain}`);
-        stepUpdate("competitors", "done", `Found ${competitorData.length} competitors`);
-
-        const allQueries: { text: string; type: string; intent: string; revenue_proximity: number; citations: object[]; persona_name: string }[] = [];
-        for (const persona of personaData) {
-          (persona.queries || []).forEach((q: { text: string; type: string; intent: string; revenue_proximity: number; citations?: object[] }) =>
-            allQueries.push({ ...q, citations: q.citations || [], persona_name: persona.name })
-          );
-        }
-
-        stepUpdate("personas", "done", `Created ${personaData.length} personas`);
-        stepUpdate("queries",  "done", `Generated ${allQueries.length} queries`);
-        stepUpdate("recs",     "done", `${recsData.length} recommendations ready`);
-
-        // ── SAVE TO SUPABASE ──────────────────────────────────────────────────
+        // ── SAVE TO SUPABASE ─────────────────────────────────────────────────
         stepUpdate("save", "running", "Saving to database...");
 
         const { data: brand, error: brandErr } = await supabase
@@ -85,7 +102,7 @@ export async function POST(req: NextRequest) {
 
         if (competitorData.length > 0) {
           await supabase.from("competitors").insert(
-            competitorData.map((c: { name: string; domain: string; type: string }) => ({
+            competitorData.map(c => ({
               brand_id: brand.id, name: c.name, domain: c.domain, type: c.type,
               aeo_score: Math.floor(Math.random() * 40) + 40,
               seo_score: Math.floor(Math.random() * 40) + 40,
@@ -95,18 +112,18 @@ export async function POST(req: NextRequest) {
 
         for (const persona of personaData) {
           const { data: p } = await supabase.from("personas").insert({
-            brand_id:     brand.id,
-            name:         persona.name,
-            archetype:    persona.archetype,
-            age_range:    persona.age_range,
-            pain_points:  persona.pain_points,
-            goals:        persona.goals,
+            brand_id:      brand.id,
+            name:          persona.name,
+            archetype:     persona.archetype,
+            age_range:     persona.age_range,
+            pain_points:   persona.pain_points,
+            goals:         persona.goals,
             ai_tools_used: persona.ai_tools_used,
-            query_style:  persona.query_style,
+            query_style:   persona.query_style,
           }).select().single();
 
           if (p) {
-            const pQueries = allQueries.filter(q => q.persona_name === persona.name);
+            const pQueries = (persona.queries || []);
             if (pQueries.length > 0) {
               await supabase.from("queries").insert(
                 pQueries.map(q => ({
@@ -125,7 +142,7 @@ export async function POST(req: NextRequest) {
 
         if (recsData.length > 0) {
           await supabase.from("recommendations").insert(
-            recsData.map((r: { title: string; description: string; category: string; priority: string; projected_lift: string; action_label: string }) => ({
+            recsData.map(r => ({
               brand_id:       brand.id,
               title:          r.title,
               description:    r.description,
@@ -137,8 +154,8 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        stepUpdate("save", "done", "All data saved successfully");
-        send({ type: "complete", brand_id: brand.id });
+        stepUpdate("save", "done", "All data saved ✓");
+        send({ type: "complete", brand_id: brand.id, industry: brandInfo.industry });
 
       } catch (err) {
         send({ type: "error", message: err instanceof Error ? err.message : "Unknown error" });

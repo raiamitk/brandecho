@@ -111,6 +111,114 @@ RULES:
   return JSON.parse(text);
 }
 
+// ── PART A: Brand + Competitors + Recommendations (~5-8s, ~1400 tokens) ───────
+// Run in parallel with Part B so total time = max(A,B) not A+B.
+
+export async function discoverPartA(brandName: string, domain?: string) {
+  const res = await fetch(CLAUDE_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type":      "application/json",
+      "x-api-key":         process.env.ANTHROPIC_API_KEY!,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model:      CLAUDE_MODEL_FAST,
+      max_tokens: 1400,
+      system:     "You are a brand intelligence expert. Return ONLY valid JSON. No markdown.",
+      messages: [{
+        role: "user",
+        content: `Analyse brand "${brandName}"${domain ? ` (website: ${domain})` : ""} and return:
+{
+  "brand": {
+    "domain": "official domain",
+    "industry": "specific industry (e.g. Quick Commerce, Online Brokerage)",
+    "description": "2-sentence brand description",
+    "brand_tone": "professional|casual|luxury|budget"
+  },
+  "competitors": [
+    {"name":"","domain":"","type":"direct|category_substitute","why":"one sentence"}
+  ],
+  "recommendations": [
+    {"title":"","description":"2 sentences","category":"aeo|seo|content|technical","priority":"high|medium|low","projected_lift":"+20%","action_label":"button text"}
+  ]
+}
+RULES: 6 competitors (3 direct, 3 category_substitute). 4 recommendations.`,
+      }],
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) { const err = await res.text(); throw new Error(`Claude Part A error ${res.status}: ${err}`); }
+  const data = await res.json();
+  const text = data.content[0].text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  return JSON.parse(text) as {
+    brand: { domain: string; industry: string; description: string; brand_tone: string };
+    competitors: { name: string; domain: string; type: string; why: string }[];
+    recommendations: { title: string; description: string; category: string; priority: string; projected_lift: string; action_label: string }[];
+  };
+}
+
+// ── PART B: Personas + Queries (~8-12s, ~2500 tokens) ────────────────────────
+// Runs in parallel with Part A — infers industry from brand name + domain itself.
+
+export async function discoverPartB(brandName: string, domain?: string) {
+  const res = await fetch(CLAUDE_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type":      "application/json",
+      "x-api-key":         process.env.ANTHROPIC_API_KEY!,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model:      CLAUDE_MODEL_FAST,
+      max_tokens: 2500,
+      system:     "You are a user research and AEO expert. Return ONLY valid JSON. No markdown.",
+      messages: [{
+        role: "user",
+        content: `For brand "${brandName}"${domain ? ` (website: ${domain})` : ""}, generate 3 diverse buyer personas with queries.
+Return JSON:
+{
+  "personas": [
+    {
+      "name": "The [Archetype]",
+      "archetype": "label",
+      "age_range": "22-35",
+      "income_level": "budget|mid|premium",
+      "pain_points": ["p1", "p2"],
+      "goals": ["g1"],
+      "ai_tools_used": ["ChatGPT"],
+      "query_style": "casual",
+      "queries": [
+        {
+          "text": "natural question as typed into ChatGPT — NO brand name",
+          "type": "aeo|geo|seo_longtail",
+          "intent": "awareness|consideration|comparison|purchase",
+          "revenue_proximity": 75,
+          "citations": [
+            {"source":"Site Name","url_pattern":"domain.com","type":"forum|review_site|comparison_site|news|expert_guide|video","why":"one sentence"}
+          ]
+        }
+      ]
+    }
+  ]
+}
+RULES: 3 personas (budget, mid, premium income). 4 queries each. 1 citation per query. NEVER include "${brandName}" in any query text.`,
+      }],
+    }),
+    signal: AbortSignal.timeout(40000),
+  });
+  if (!res.ok) { const err = await res.text(); throw new Error(`Claude Part B error ${res.status}: ${err}`); }
+  const data = await res.json();
+  const text = data.content[0].text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  return JSON.parse(text) as {
+    personas: {
+      name: string; archetype: string; age_range: string; income_level: string;
+      pain_points: string[]; goals: string[]; ai_tools_used: string[]; query_style: string;
+      queries: { text: string; type: string; intent: string; revenue_proximity: number; citations: object[] }[];
+    }[];
+  };
+}
+
 // ── Brand Discovery (kept for backward compat) ────────────────────────────────
 
 export async function discoverBrandInfo(brandName: string, domain?: string) {
@@ -217,19 +325,21 @@ Return a single JSON object:
 export async function scoreQueryVisibility(
   brandName: string,
   industry: string,
-  queries: { id: string; text: string; type: string }[]
+  queries: { id: string; text: string; type: string }[],
+  description?: string
 ): Promise<Record<string, { claude_score: number; web_score: number; reason: string }>> {
   const queryList = queries.map((q, i) => `${i + 1}. [${q.id}] ${q.text}`).join("\n");
+  const brandContext = description ? `\nBrand context: ${description}` : "";
   const raw = await claudeChat(
     "You are an AEO (AI Engine Optimization) expert. Always return valid JSON only. No markdown.",
-    `Brand: "${brandName}" | Industry: "${industry}"
+    `Brand: "${brandName}" | Industry: "${industry}"${brandContext}
 
-For each query below, score how likely "${brandName}" would be mentioned by AI engines (ChatGPT, Perplexity, Gemini) if a user asked that exact query. Also score the brand's web authority signals for that query.
+For each query, score how likely "${brandName}" is to be mentioned by AI engines (ChatGPT, Perplexity, Gemini).
 
 Queries:
 ${queryList}
 
-Return JSON object keyed by the query ID string:
+Return JSON object keyed by query ID:
 {
   "uuid-here": {
     "claude_score": 0-100,
@@ -238,10 +348,14 @@ Return JSON object keyed by the query ID string:
   }
 }
 
-Scoring guide:
-- claude_score: probability AI engines cite this brand for this query (0=never, 100=always)
-- web_score: strength of brand's web presence for this query (backlinks, reviews, directories)
-- Be realistic. New/unknown brands score 10-30. Category leaders score 60-85.`
+Scoring guide — be ACCURATE, not pessimistic:
+- For queries directly about the brand's core product/service category: score 50-80 if the brand is established
+- For queries where the brand is a category leader or well-known: score 65-90
+- For queries outside the brand's core strength: score 20-50
+- For highly generic queries with many competitors: score 30-60
+- claude_score: likelihood AI engines cite this brand (factor in brand's market position and relevance)
+- web_score: brand's web authority for this query (reviews, directories, press coverage)
+- A known brand in its own industry should score 40-70 for relevant queries. Reserve sub-30 scores only for completely irrelevant queries.`
   );
   return JSON.parse(raw);
 }
@@ -289,16 +403,18 @@ Return JSON array:
 export async function analyzeCompetitorGaps(
   brandName: string,
   competitors: { name: string; type: string }[],
-  queries: { id: string; text: string; type: string; intent: string }[]
+  queries: { id: string; text: string; type: string; intent: string }[],
+  description?: string
 ) {
   const compList = competitors.slice(0, 4).map(c => c.name).join(", ");
   const queryList = queries.slice(0, 15).map((q, i) => `${i + 1}. [${q.id}] ${q.text}`).join("\n");
+  const brandContext = description ? `\nBrand context: ${description}` : "";
 
   const raw = await claudeChat(
     "You are a competitive intelligence analyst for AEO/SEO. Always return valid JSON only. No markdown.",
-    `Brand: "${brandName}" | Competitors: ${compList}
+    `Brand: "${brandName}" | Competitors: ${compList}${brandContext}
 
-For each query, estimate which brands (including "${brandName}") would likely appear in AI engine responses. Be realistic — smaller brands rarely appear for competitive queries.
+For each query, estimate which brands appear in AI engine answers. Use a BALANCED assessment — an established brand in its own category WILL appear for many relevant queries. Do NOT default everything to "missing".
 
 Queries:
 ${queryList}
@@ -310,14 +426,16 @@ Return JSON array:
     "brand_appears": true|false,
     "competitors_appear": ["CompetitorName1", "CompetitorName2"],
     "gap_type": "missing|weak|strong",
-    "opportunity": "one sentence: what ${brandName} should do to appear for this query"
+    "opportunity": "one sentence: specific action for ${brandName}"
   }
 ]
 
 gap_type guide:
-- strong: brand appears, competitors don't
-- weak: brand appears but competitors appear more prominently
-- missing: brand doesn't appear but competitors do (this is a gap to fix)`
+- strong: brand appears prominently, ahead of competitors — use this for the brand's core strengths
+- weak: brand appears but competitors are also prominent — use for competitive areas
+- missing: brand absent, competitors dominate — use for genuine gaps outside core strength
+
+Expected distribution for an established brand: ~30% strong, ~40% weak, ~30% missing. Avoid rating everything as missing — that is inaccurate for real brands.`
   );
   return JSON.parse(raw);
 }
