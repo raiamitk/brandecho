@@ -7,9 +7,9 @@ import { createClient } from "@supabase/supabase-js";
 
 export const maxDuration = 55;
 
-// gemini-1.5-flash: 1500 RPD free tier (vs 200 RPD for 2.0-flash)
+// gemini-2.0-flash-lite: 1500 RPD free tier, replaces deprecated gemini-1.5-flash
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

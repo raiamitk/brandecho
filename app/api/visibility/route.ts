@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (apiKey && apiKey !== "YOUR_GEMINI_API_KEY") {
       try {
-        const GURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+        const GURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent";
         const queryLines = top5.map((q, i) => `${i + 1}. ${q.text}`).join("\n");
         const gRes = await fetch(`${GURL}?key=${apiKey}`, {
           method: "POST",
