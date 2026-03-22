@@ -97,7 +97,7 @@ RULES:
 - 4 recommendations`,
       }],
     }),
-    signal: AbortSignal.timeout(9000),
+    signal: AbortSignal.timeout(55000),
   });
 
   if (!res.ok) {

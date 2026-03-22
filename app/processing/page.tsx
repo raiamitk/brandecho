@@ -25,6 +25,7 @@ export default function ProcessingPage() {
   const [steps, setSteps]         = useState<Step[]>(INITIAL_STEPS);
   const [error, setError]         = useState("");
   const [brandName, setBrandName] = useState("");
+  const [brandDomain, setBrandDomain] = useState("");
   const started = useRef(false);
 
   const updateStep = (id: string, status: Step["status"], detail?: string) =>
@@ -33,11 +34,15 @@ export default function ProcessingPage() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    const name   = sessionStorage.getItem("brand_name")   || "";
     const domain = sessionStorage.getItem("brand_domain") || "";
-    setBrandName(name);
-    if (!name) { router.push("/"); return; }
-    runDiscovery(name, domain);
+    const name   = sessionStorage.getItem("brand_name")   || "";
+    // If nothing set (direct nav), redirect back
+    if (!domain && !name) { router.push("/"); return; }
+    // Prefer brand name derived from URL; fall back to raw name
+    const displayName = name || domain.replace(/https?:\/\/(www\.)?/, "").split(".")[0];
+    setBrandName(displayName);
+    setBrandDomain(domain);
+    runDiscovery(displayName, domain);
   }, []);
 
   const runDiscovery = async (name: string, domain: string) => {
@@ -87,7 +92,10 @@ export default function ProcessingPage() {
           <h1 className="text-2xl font-bold mb-2" style={{ color: "#111827" }}>
             Analysing <span style={{ color: AT }}>{brandName}</span>
           </h1>
-          <p className="text-sm" style={{ color: "#9ca3af" }}>Running AI agents — about 30–45 seconds</p>
+          <p className="text-sm" style={{ color: "#9ca3af" }}>
+            {brandDomain && <span style={{ color: "#6b7280" }}>{brandDomain} &nbsp;·&nbsp; </span>}
+            Running AI agents — about 30–45 seconds
+          </p>
         </div>
 
         <div className="mb-8">
