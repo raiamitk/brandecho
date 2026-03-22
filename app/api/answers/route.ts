@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// ── AI Answer Preview — calls Gemini for every target query, shows real answers
-// with brand + competitor mentions highlighted.
+// ── AI Answer Preview — ONE Gemini call for all queries to avoid rate limits
+// Instead of 12 parallel requests (which triggers 429), we ask Gemini to
+// answer all queries in a single structured JSON response.
+
+export const maxDuration = 55;
 
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
@@ -22,11 +25,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ available: false, error: "GEMINI_API_KEY not set" });
     }
 
-    // Load brand + queries + competitors
+    // Load brand + top 8 queries + competitors
     const [brandRes, queryRes, compRes] = await Promise.all([
       supabase.from("brands").select("name, industry").eq("id", brand_id).single(),
       supabase.from("queries").select("id, text, type, intent, revenue_proximity")
-        .eq("brand_id", brand_id).order("revenue_proximity", { ascending: false }).limit(12),
+        .eq("brand_id", brand_id)
+        .order("revenue_proximity", { ascending: false })
+        .limit(8),
       supabase.from("competitors").select("name").eq("brand_id", brand_id),
     ]);
 
@@ -36,62 +41,104 @@ export async function POST(req: NextRequest) {
     const queries         = queryRes.data || [];
     const competitorNames = (compRes.data || []).map((c: { name: string }) => c.name);
 
-    // Call Gemini for all queries in parallel (12 < 15 RPM free limit)
-    const settled = await Promise.allSettled(
-      queries.map(async (q) => {
-        const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: q.text }] }],
-            generationConfig: { maxOutputTokens: 700, temperature: 0.2 },
-          }),
-          signal: AbortSignal.timeout(8000),
-        });
+    if (!queries.length) {
+      return NextResponse.json({
+        brand_name: brandName, competitor_names: competitorNames,
+        total_queries: 0, brand_mentioned_count: 0, competitor_only_count: 0,
+        available: true, answers: [],
+      });
+    }
 
-        if (!res.ok) {
-          const err = await res.text();
-          return { query_id: q.id, query_text: q.text, type: q.type,
-            revenue_proximity: q.revenue_proximity, answer: "",
-            brand_mentioned: false, brand_mention_count: 0,
-            competitors_mentioned: [] as string[], error: `Gemini ${res.status}: ${err.slice(0, 80)}` };
-        }
+    // Build the numbered query list for the prompt
+    const queryLines = queries.map((q, i) => `${i + 1}. ${q.text}`).join("\n");
 
-        const data   = await res.json();
-        const answer: string = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        const lower  = answer.toLowerCase();
-        const bLow   = brandName.toLowerCase();
+    // Single Gemini call — answers all queries in one shot
+    const prompt = `You are a helpful AI assistant. Answer each of the following questions as you genuinely would when a real user asks you. Each answer should be 3-5 sentences — factual, informative, and natural. Include specific brand, product, or company names where relevant.
 
-        const brandMentionCount = (
-          lower.match(new RegExp(bLow.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []
-        ).length;
+Questions:
+${queryLines}
 
-        const competitorsMentioned = competitorNames.filter((name: string) =>
-          lower.includes(name.toLowerCase())
-        );
+Return ONLY a valid JSON array with exactly ${queries.length} objects, one per question, in the same order:
+[
+  { "index": 1, "answer": "your answer here" },
+  { "index": 2, "answer": "your answer here" }
+]
+No markdown, no explanation outside the JSON array.`;
 
-        return {
-          query_id:             q.id,
-          query_text:           q.text,
-          type:                 q.type,
-          revenue_proximity:    q.revenue_proximity,
-          answer,
-          brand_mentioned:      brandMentionCount > 0,
-          brand_mention_count:  brandMentionCount,
-          competitors_mentioned: competitorsMentioned,
-          error:                null,
-        };
-      })
-    );
+    const geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 3500,
+          temperature: 0.3,
+          responseMimeType: "application/json",
+        },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
 
-    const answers = settled.map(r =>
-      r.status === "fulfilled"
-        ? r.value
-        : { query_text: "", answer: "", brand_mentioned: false, brand_mention_count: 0,
-            competitors_mentioned: [], error: "Request failed" }
-    );
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      // Return partial data with error so the UI can show a useful message
+      return NextResponse.json({
+        brand_name: brandName, competitor_names: competitorNames,
+        total_queries: queries.length, brand_mentioned_count: 0, competitor_only_count: 0,
+        available: false,
+        error: `Gemini ${geminiRes.status}: ${errText.slice(0, 200)}`,
+        answers: queries.map(q => ({
+          query_id: q.id, query_text: q.text, type: q.type,
+          revenue_proximity: q.revenue_proximity,
+          answer: "", brand_mentioned: false, brand_mention_count: 0,
+          competitors_mentioned: [] as string[],
+          error: `Gemini API returned ${geminiRes.status}`,
+        })),
+      });
+    }
 
-    const mentionedCount = answers.filter(a => a.brand_mentioned).length;
+    const geminiData = await geminiRes.json();
+    const rawText: string = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+
+    // Parse the JSON array Gemini returned
+    let parsed: { index: number; answer: string }[] = [];
+    try {
+      const clean = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      parsed = JSON.parse(clean);
+    } catch {
+      // If JSON parse fails, try to extract answers with regex as fallback
+      parsed = queries.map((_, i) => ({ index: i + 1, answer: rawText }));
+    }
+
+    // Build answer objects with brand/competitor detection
+    const answers = queries.map((q, i) => {
+      const item   = parsed.find(p => p.index === i + 1) || parsed[i];
+      const answer: string = item?.answer || "";
+      const lower  = answer.toLowerCase();
+      const bLow   = brandName.toLowerCase();
+
+      const brandMentionCount = (
+        lower.match(new RegExp(bLow.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []
+      ).length;
+
+      const competitorsMentioned = competitorNames.filter((name: string) =>
+        lower.includes(name.toLowerCase())
+      );
+
+      return {
+        query_id:              q.id,
+        query_text:            q.text,
+        type:                  q.type,
+        revenue_proximity:     q.revenue_proximity,
+        answer,
+        brand_mentioned:       brandMentionCount > 0,
+        brand_mention_count:   brandMentionCount,
+        competitors_mentioned: competitorsMentioned,
+        error:                 answer ? null : "No answer returned",
+      };
+    });
+
+    const mentionedCount     = answers.filter(a => a.brand_mentioned).length;
     const competitorOnlyCount = answers.filter(
       a => !a.brand_mentioned && a.competitors_mentioned.length > 0
     ).length;
