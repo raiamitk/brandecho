@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import Anthropic from "@anthropic-ai/sdk";
 
 // ── AI Answer Preview
 // Strategy: try Gemini first (1 attempt + 1 retry), then fall back to Claude Haiku.
@@ -17,7 +16,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
+const CLAUDE_HAIKU   = "claude-haiku-4-5-20251001";
 
 // ── Shared prompt builder ──────────────────────────────────────────────────────
 function buildPrompt(queryLines: string, count: number): string {
@@ -77,12 +77,23 @@ async function tryGemini(prompt: string, apiKey: string): Promise<{ text: string
 // ── Try Claude Haiku (fallback) ────────────────────────────────────────────────
 async function tryClaude(prompt: string): Promise<{ text: string; ok: boolean }> {
   try {
-    const msg = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 3500,
-      messages: [{ role: "user", content: prompt }],
+    const res = await fetch(CLAUDE_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type":      "application/json",
+        "x-api-key":         process.env.ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model:      CLAUDE_HAIKU,
+        max_tokens: 3500,
+        messages:   [{ role: "user", content: prompt }],
+      }),
+      signal: AbortSignal.timeout(40000),
     });
-    const text = msg.content[0]?.type === "text" ? msg.content[0].text : "[]";
+    if (!res.ok) return { text: "", ok: false };
+    const data = await res.json();
+    const text: string = data.content?.[0]?.text || "[]";
     return { text, ok: true };
   } catch (e) {
     console.error("Claude fallback failed:", e);
