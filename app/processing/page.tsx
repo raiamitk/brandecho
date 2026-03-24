@@ -148,13 +148,20 @@ export default function ProcessingPage() {
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header style={{ padding: "14px 28px", borderBottom: "1px solid #e5e7eb",
-        background: "#fff", display: "flex", alignItems: "center", gap: 12 }}>
-        <img src="/logo.svg" alt="BrandEcho" style={{ height: 26 }} />
-        <span style={{ color: "#d1d5db" }}>|</span>
-        <span style={{ fontSize: 13, color: "#6b7280" }}>
-          Analysing <strong style={{ color: "#111827" }}>{brandName}</strong>
-          {brandDomain && <span style={{ color: "#9ca3af" }}> · {brandDomain}</span>}
-        </span>
+        background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <img src="/logo.svg" alt="BrandEcho" style={{ height: 26 }} />
+          <span style={{ color: "#d1d5db" }}>|</span>
+          <span style={{ fontSize: 13, color: "#6b7280" }}>
+            Analysing <strong style={{ color: "#111827" }}>{brandName}</strong>
+            {brandDomain && <span style={{ color: "#9ca3af" }}> · {brandDomain}</span>}
+          </span>
+        </div>
+        <button onClick={() => router.push("/")}
+          style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", background: "none",
+            border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}>
+          🏠 New Scan
+        </button>
       </header>
 
       {/* ── Body ───────────────────────────────────────────────────────────── */}

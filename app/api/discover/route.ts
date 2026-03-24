@@ -29,9 +29,16 @@ export async function POST(req: NextRequest) {
 
       try {
         // ── CACHE CHECK ──────────────────────────────────────────────────────
+        // Use limit(1) + array access instead of maybeSingle() — maybeSingle()
+        // throws "multiple rows" when a brand has been scanned more than once,
+        // crashing the SSE stream and causing ECONNRESET on the client.
         stepUpdate("brand", "running", "Checking cache...");
-        const { data: cached } = await supabase
-          .from("brands").select("id, name, industry, domain").ilike("name", brand_name.trim()).maybeSingle();
+        const { data: cachedRows } = await supabase
+          .from("brands").select("id, name, industry, domain")
+          .ilike("name", brand_name.trim())
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const cached = cachedRows?.[0] ?? null;
 
         if (cached) {
           ["brand","domain","competitors","personas","queries","recs","save"].forEach(id =>

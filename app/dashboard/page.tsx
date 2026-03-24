@@ -666,7 +666,7 @@ export default function DashboardPage() {
       <RunCTA
         icon={Eye} accentColor={A}
         title="AI Visibility Checker"
-        desc="Score each query 0–100 for how likely AI engines (ChatGPT, Perplexity, Gemini) are to cite your brand. Uses Claude prediction + Gemini live check + web authority signals."
+        desc="Score each query 0–100 for how likely AI engines are to cite your brand. Claude column = predicted citation score. Gemini/Claude column = live answer check (brand mentioned?). Web = authority signals."
         label="Run Visibility Analysis"
         loading={visLoading}
         onClick={runVisibility}
@@ -713,7 +713,13 @@ export default function DashboardPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 110px 90px 130px",
             padding: "10px 20px", background: "#f3f4f6",
             fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            <span>Query</span><span>Claude</span><span>AI Check</span><span>Web</span><span>Combined</span>
+            <span>Query</span>
+            <span title="Claude AI predicted citation probability">Claude</span>
+            <span title={visData.ai_check_source === "gemini" ? "Live Gemini answer check" : "Live Claude answer check"}>
+              {visData.ai_check_source === "gemini" ? "Gemini ⚡" : visData.ai_check_source === "claude" ? "Claude 🤖" : "AI Check"}
+            </span>
+            <span>Web</span>
+            <span>Combined</span>
           </div>
           {scores.map((s, i) => (
             <div key={s.query_id} style={{ display: "grid", gridTemplateColumns: "1fr 90px 110px 90px 130px",
@@ -1499,6 +1505,11 @@ export default function DashboardPage() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => router.push("/")}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px",
+                borderRadius: 8, border: `1px solid ${BORD}`, background: SURF, color: T3, fontSize: 13, cursor: "pointer" }}>
+              🏠 New Scan
+            </button>
             <button onClick={() => router.push("/brands")}
               style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px",
                 borderRadius: 8, border: `1px solid ${BORD}`, background: SURF, color: T3, fontSize: 13, cursor: "pointer" }}>
