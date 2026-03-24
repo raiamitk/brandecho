@@ -82,51 +82,82 @@ export default function ProcessingPage() {
   }, []);
 
   const runDiscovery = async (name: string, domain: string) => {
+    let completed = false;
     try {
       const res = await fetch("/api/discover", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ brand_name: name, domain }),
       });
-      if (!res.ok || !res.body) throw new Error("Discovery API failed");
-      const reader = res.body.getReader();
+      if (!res.ok || !res.body) throw new Error(`Discovery API failed (${res.status})`);
+
+      const reader  = res.body.getReader();
       const decoder = new TextDecoder();
+      // SSE events end with \n\n. We buffer incomplete chunks so a large JSON
+      // payload split across two network chunks is never fed to JSON.parse half-baked.
+      let buffer = "";
+
+      // Capture liveBrand in a local ref so the complete handler can read the
+      // most-recent value without a stale closure over the state variable.
+      let lastIndustry = "";
+
       while (true) {
-        const { done, value } = await reader.read(); if (done) break;
-        const lines = decoder.decode(value).split("\n").filter(l => l.startsWith("data: "));
-        for (const line of lines) {
-          const json = line.replace("data: ", "").trim();
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Each SSE event is terminated by \n\n — split on that boundary
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? ""; // last element is the incomplete tail
+
+        for (const part of parts) {
+          // An SSE event block may have multiple lines; find the data: line
+          const dataLine = part.split("\n").find(l => l.startsWith("data: "));
+          if (!dataLine) continue;
+          const json = dataLine.slice(6).trim(); // remove "data: " prefix
           if (!json || json === "[DONE]") continue;
-          const event = JSON.parse(json);
+
+          let event: Record<string, unknown>;
+          try { event = JSON.parse(json); }
+          catch { continue; } // skip malformed chunks
 
           if (event.type === "step_update") {
-            updateStep(event.step_id, event.status, event.detail);
+            updateStep(event.step_id as string, event.status as string, event.detail as string | undefined);
           }
 
-          // Live data events — populate widgets instantly
           if (event.type === "data") {
-            if (event.key === "brand")       setLiveBrand(event.payload);
-            if (event.key === "competitors") setLiveCompetitors(event.payload);
-            if (event.key === "personas")    setLivePersonas(event.payload);
-            if (event.key === "queries")     setLiveQueries(event.payload);
-            if (event.key === "recs")        setLiveRecs(event.payload);
+            if (event.key === "brand")       { setLiveBrand(event.payload as LiveBrand); lastIndustry = (event.payload as LiveBrand).industry; }
+            if (event.key === "competitors") setLiveCompetitors(event.payload as LiveCompetitor[]);
+            if (event.key === "personas")    setLivePersonas(event.payload as LivePersona[]);
+            if (event.key === "queries")     setLiveQueries(event.payload as LiveQuery[]);
+            if (event.key === "recs")        setLiveRecs(event.payload as LiveRec[]);
           }
 
           if (event.type === "complete") {
-            const finalName   = event.brand_name   || sessionStorage.getItem("brand_name")   || name;
-            const finalDomain = event.brand_domain || sessionStorage.getItem("brand_domain") || domain;
-            sessionStorage.setItem("brand_id",   event.brand_id);
+            completed = true;
+            const finalName   = (event.brand_name   as string) || sessionStorage.getItem("brand_name")   || name;
+            const finalDomain = (event.brand_domain as string) || sessionStorage.getItem("brand_domain") || domain;
+            sessionStorage.setItem("brand_id",   event.brand_id as string);
             sessionStorage.setItem("brand_name", finalName);
             saveBrand({
-              id:         event.brand_id,
+              id:         event.brand_id as string,
               name:       finalName,
-              industry:   event.industry || liveBrand?.industry || "",
+              industry:   (event.industry as string) || lastIndustry || "",
               domain:     finalDomain,
               scanned_at: new Date().toISOString(),
             });
             setTimeout(() => router.push("/dashboard"), 800);
           }
-          if (event.type === "error") setError(event.message);
+
+          if (event.type === "error") {
+            setError(event.message as string);
+          }
         }
+      }
+
+      // Stream ended without a complete event — surface a retry
+      if (!completed) {
+        setError("Scan did not complete — please try again.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
