@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
 import { discoverPartA, discoverPartB } from "@/lib/grok";
 
-// ── Discover route — runs Part A (brand+competitors+recs) and Part B
+// Discover route — runs Part A (brand+competitors+recs) and Part B
 // (personas+queries) in PARALLEL. As soon as each finishes it sends a
 // "data" SSE event so the processing page can show widgets immediately.
 // Total time ~12-15s instead of the previous 25-40s single-call approach.
@@ -28,28 +28,28 @@ export async function POST(req: NextRequest) {
         send({ type: "step_update", step_id, status, detail });
 
       try {
-        // ── CACHE CHECK ──────────────────────────────────────────────────────
-        // Use limit(1) + array access instead of maybeSingle() — maybeSingle()
-        // throws "multiple rows" when a brand has been scanned more than once,
-        // crashing the SSE stream and causing ECONNRESET on the client.
+        // CACHE CHECK
+        // Use limit(1) + array access instead of maybeSingle() to avoid
+        // "multiple rows" errors when a brand has been scanned more than once.
+        // No .order("created_at") — that column may not exist in the schema,
+        // which causes Supabase to silently return null and bypass the cache.
         stepUpdate("brand", "running", "Checking cache...");
         const { data: cachedRows } = await supabase
           .from("brands").select("id, name, industry, domain")
           .ilike("name", brand_name.trim())
-          .order("created_at", { ascending: false })
           .limit(1);
         const cached = cachedRows?.[0] ?? null;
 
         if (cached) {
           ["brand","domain","competitors","personas","queries","recs","save"].forEach(id =>
-            stepUpdate(id, "done", id === "brand" ? "Loaded from cache!" : "Cached ✓")
+            stepUpdate(id, "done", id === "brand" ? "Loaded from cache!" : "Cached")
           );
           send({ type: "complete", brand_id: cached.id, industry: cached.industry, brand_name: cached.name, brand_domain: cached.domain });
           controller.close();
           return;
         }
 
-        // ── FIRE BOTH PARTS IN PARALLEL ──────────────────────────────────────
+        // FIRE BOTH PARTS IN PARALLEL
         stepUpdate("brand",       "running", "AI analysing brand profile...");
         stepUpdate("competitors", "running", "Finding competitors...");
         stepUpdate("recs",        "running", "Building recommendations...");
@@ -57,7 +57,6 @@ export async function POST(req: NextRequest) {
         stepUpdate("queries",     "running", "Generating target queries...");
 
         // Both parts run in parallel; .then() fires SSE events the moment each finishes.
-        // Promise.all return values give TypeScript the correct inferred types.
         const [partA, partB] = await Promise.all([
           discoverPartA(brand_name, domain).then(result => {
             stepUpdate("brand",       "done", `Industry: ${result.brand.industry}`);
@@ -85,10 +84,14 @@ export async function POST(req: NextRequest) {
         const personaData    = partB.personas       || [];
         const finalDomain    = domain || brandInfo.domain;
 
-        // ── SAVE TO SUPABASE ─────────────────────────────────────────────────
+        // SAVE TO SUPABASE
         stepUpdate("save", "running", "Saving to database...");
 
-        const { data: brand, error: brandErr } = await supabase
+        // Try INSERT; if brand already exists (unique constraint, pg code 23505),
+        // fetch the existing record and use it as a cache hit instead of throwing.
+        let brand: { id: string; name: string; industry: string; domain: string } | null = null;
+
+        const { data: insertedBrand, error: brandErr } = await supabase
           .from("brands")
           .insert({
             name: brand_name, domain: finalDomain,
@@ -96,12 +99,33 @@ export async function POST(req: NextRequest) {
           })
           .select().single();
 
-        if (brandErr || !brand) throw new Error(`Brand save failed: ${brandErr?.message}`);
+        if (brandErr) {
+          // PostgreSQL unique violation code is "23505"
+          const isUniqueViolation =
+            brandErr.code === "23505" ||
+            (brandErr.message || "").toLowerCase().includes("unique") ||
+            (brandErr.message || "").toLowerCase().includes("duplicate");
+
+          if (isUniqueViolation) {
+            // Brand was inserted between cache check and now — fetch it
+            const { data: existingRows } = await supabase
+              .from("brands").select("id, name, industry, domain")
+              .ilike("name", brand_name.trim())
+              .limit(1);
+            brand = existingRows?.[0] ?? null;
+          }
+
+          if (!brand) throw new Error(`Brand save failed: ${brandErr.message}`);
+        } else {
+          brand = insertedBrand;
+        }
+
+        if (!brand) throw new Error("Brand record unavailable after save");
 
         if (competitorData.length > 0) {
           await supabase.from("competitors").insert(
             competitorData.map(c => ({
-              brand_id: brand.id, name: c.name, domain: c.domain, type: c.type,
+              brand_id: brand!.id, name: c.name, domain: c.domain, type: c.type,
               aeo_score: Math.floor(Math.random() * 40) + 40,
               seo_score: Math.floor(Math.random() * 40) + 40,
             }))
@@ -125,7 +149,7 @@ export async function POST(req: NextRequest) {
             if (pQueries.length > 0) {
               await supabase.from("queries").insert(
                 pQueries.map(q => ({
-                  brand_id:          brand.id,
+                  brand_id:          brand!.id,
                   persona_id:        p.id,
                   text:              q.text,
                   type:              q.type,
@@ -141,7 +165,7 @@ export async function POST(req: NextRequest) {
         if (recsData.length > 0) {
           await supabase.from("recommendations").insert(
             recsData.map(r => ({
-              brand_id:       brand.id,
+              brand_id:       brand!.id,
               title:          r.title,
               description:    r.description,
               category:       r.category,
@@ -152,8 +176,8 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        stepUpdate("save", "done", "All data saved ✓");
-        send({ type: "complete", brand_id: brand.id, industry: brandInfo.industry });
+        stepUpdate("save", "done", "All data saved");
+        send({ type: "complete", brand_id: brand.id, industry: brandInfo.industry, brand_name: brand.name, brand_domain: brand.domain });
 
       } catch (err) {
         send({ type: "error", message: err instanceof Error ? err.message : "Unknown error" });
