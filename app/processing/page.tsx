@@ -122,7 +122,7 @@ export default function ProcessingPage() {
           catch { continue; } // skip malformed chunks
 
           if (event.type === "step_update") {
-            updateStep(event.step_id as string, event.status as string, event.detail as string | undefined);
+            updateStep(event.step_id as string, event.status as Step["status"], event.detail as string | undefined);
           }
 
           if (event.type === "data") {
