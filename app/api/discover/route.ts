@@ -29,24 +29,34 @@ export async function POST(req: NextRequest) {
 
       try {
         // CACHE CHECK
-        // Use limit(1) + array access instead of maybeSingle() to avoid
-        // "multiple rows" errors when a brand has been scanned more than once.
-        // No .order("created_at") — that column may not exist in the schema,
-        // which causes Supabase to silently return null and bypass the cache.
+        // Order by id DESC to prefer the most recently inserted record.
+        // Then verify it has associated queries — old/partial records from
+        // early dev runs have no children and would cause the dashboard to hang.
         stepUpdate("brand", "running", "Checking cache...");
         const { data: cachedRows } = await supabase
           .from("brands").select("id, name, industry, domain")
           .ilike("name", brand_name.trim())
+          .order("id", { ascending: false })
           .limit(1);
-        const cached = cachedRows?.[0] ?? null;
+        const candidate = cachedRows?.[0] ?? null;
 
-        if (cached) {
-          ["brand","domain","competitors","personas","queries","recs","save"].forEach(id =>
-            stepUpdate(id, "done", id === "brand" ? "Loaded from cache!" : "Cached")
-          );
-          send({ type: "complete", brand_id: cached.id, industry: cached.industry, brand_name: cached.name, brand_domain: cached.domain });
-          controller.close();
-          return;
+        if (candidate) {
+          const { count } = await supabase
+            .from("queries")
+            .select("id", { count: "exact", head: true })
+            .eq("brand_id", candidate.id);
+
+          if (count && count > 0) {
+            // Valid complete cache hit — use it
+            ["brand","domain","competitors","personas","queries","recs","save"].forEach(id =>
+              stepUpdate(id, "done", id === "brand" ? "Loaded from cache!" : "Cached")
+            );
+            send({ type: "complete", brand_id: candidate.id, industry: candidate.industry, brand_name: candidate.name, brand_domain: candidate.domain });
+            controller.close();
+            return;
+          }
+          // Incomplete record — delete it and re-run analysis
+          await supabase.from("brands").delete().eq("id", candidate.id);
         }
 
         // FIRE BOTH PARTS IN PARALLEL
@@ -107,10 +117,11 @@ export async function POST(req: NextRequest) {
             (brandErr.message || "").toLowerCase().includes("duplicate");
 
           if (isUniqueViolation) {
-            // Brand was inserted between cache check and now — fetch it
+            // Brand was inserted between cache check and now — fetch newest
             const { data: existingRows } = await supabase
               .from("brands").select("id, name, industry, domain")
               .ilike("name", brand_name.trim())
+              .order("id", { ascending: false })
               .limit(1);
             brand = existingRows?.[0] ?? null;
           }
@@ -126,8 +137,6 @@ export async function POST(req: NextRequest) {
           await supabase.from("competitors").insert(
             competitorData.map(c => ({
               brand_id: brand!.id, name: c.name, domain: c.domain, type: c.type,
-              aeo_score: Math.floor(Math.random() * 40) + 40,
-              seo_score: Math.floor(Math.random() * 40) + 40,
             }))
           );
         }
