@@ -29,9 +29,6 @@ export async function POST(req: NextRequest) {
 
       try {
         // CACHE CHECK
-        // Order by id DESC to prefer the most recently inserted record.
-        // Then verify it has associated queries — old/partial records from
-        // early dev runs have no children and would cause the dashboard to hang.
         stepUpdate("brand", "running", "Checking cache...");
         const { data: cachedRows } = await supabase
           .from("brands").select("id, name, industry, domain")
@@ -40,153 +37,151 @@ export async function POST(req: NextRequest) {
           .limit(1);
         const candidate = cachedRows?.[0] ?? null;
 
+        // Check if this candidate has queries (fully-analysed record)
+        let cacheValid = false;
         if (candidate) {
           const { count } = await supabase
             .from("queries")
             .select("id", { count: "exact", head: true })
             .eq("brand_id", candidate.id);
-
-          if (count && count > 0) {
-            // Valid complete cache hit — use it
-            ["brand","domain","competitors","personas","queries","recs","save"].forEach(id =>
-              stepUpdate(id, "done", id === "brand" ? "Loaded from cache!" : "Cached")
-            );
-            send({ type: "complete", brand_id: candidate.id, industry: candidate.industry, brand_name: candidate.name, brand_domain: candidate.domain });
-            controller.close();
-            return;
+          cacheValid = (count ?? 0) > 0;
+          if (!cacheValid) {
+            // Stale/incomplete record — delete it and re-analyse
+            await supabase.from("brands").delete().eq("id", candidate.id);
           }
-          // Incomplete record — delete it and re-run analysis
-          await supabase.from("brands").delete().eq("id", candidate.id);
         }
 
-        // FIRE BOTH PARTS IN PARALLEL
-        stepUpdate("brand",       "running", "AI analysing brand profile...");
-        stepUpdate("competitors", "running", "Finding competitors...");
-        stepUpdate("recs",        "running", "Building recommendations...");
-        stepUpdate("personas",    "running", "Creating buyer personas...");
-        stepUpdate("queries",     "running", "Generating target queries...");
-
-        // Both parts run in parallel; .then() fires SSE events the moment each finishes.
-        const [partA, partB] = await Promise.all([
-          discoverPartA(brand_name, domain).then(result => {
-            stepUpdate("brand",       "done", `Industry: ${result.brand.industry}`);
-            stepUpdate("domain",      "done", `Domain: ${domain || result.brand.domain}`);
-            stepUpdate("competitors", "done", `Found ${result.competitors.length} competitors`);
-            stepUpdate("recs",        "done", `${result.recommendations.length} recommendations`);
-            send({ type: "data", key: "brand",       payload: result.brand });
-            send({ type: "data", key: "competitors", payload: result.competitors });
-            send({ type: "data", key: "recs",        payload: result.recommendations });
-            return result;
-          }),
-          discoverPartB(brand_name, domain).then(result => {
-            const allQueries = (result.personas || []).flatMap(p => p.queries || []);
-            stepUpdate("personas", "done", `Created ${result.personas.length} personas`);
-            stepUpdate("queries",  "done", `Generated ${allQueries.length} queries`);
-            send({ type: "data", key: "personas", payload: result.personas });
-            send({ type: "data", key: "queries",  payload: allQueries });
-            return result;
-          }),
-        ]);
-
-        const brandInfo      = partA.brand;
-        const competitorData = partA.competitors    || [];
-        const recsData       = partA.recommendations || [];
-        const personaData    = partB.personas       || [];
-        const finalDomain    = domain || brandInfo.domain;
-
-        // SAVE TO SUPABASE
-        stepUpdate("save", "running", "Saving to database...");
-
-        // Try INSERT; if brand already exists (unique constraint, pg code 23505),
-        // fetch the existing record and use it as a cache hit instead of throwing.
-        let brand: { id: string; name: string; industry: string; domain: string } | null = null;
-
-        const { data: insertedBrand, error: brandErr } = await supabase
-          .from("brands")
-          .insert({
-            name: brand_name, domain: finalDomain,
-            industry: brandInfo.industry, description: brandInfo.description,
-          })
-          .select().single();
-
-        if (brandErr) {
-          // PostgreSQL unique violation code is "23505"
-          const isUniqueViolation =
-            brandErr.code === "23505" ||
-            (brandErr.message || "").toLowerCase().includes("unique") ||
-            (brandErr.message || "").toLowerCase().includes("duplicate");
-
-          if (isUniqueViolation) {
-            // Brand was inserted between cache check and now — fetch newest
-            const { data: existingRows } = await supabase
-              .from("brands").select("id, name, industry, domain")
-              .ilike("name", brand_name.trim())
-              .order("id", { ascending: false })
-              .limit(1);
-            brand = existingRows?.[0] ?? null;
-          }
-
-          if (!brand) throw new Error(`Brand save failed: ${brandErr.message}`);
-        } else {
-          brand = insertedBrand;
-        }
-
-        if (!brand) throw new Error("Brand record unavailable after save");
-
-        if (competitorData.length > 0) {
-          await supabase.from("competitors").insert(
-            competitorData.map(c => ({
-              brand_id: brand!.id, name: c.name, domain: c.domain, type: c.type,
-            }))
+        if (cacheValid && candidate) {
+          // ── CACHE HIT ──────────────────────────────────────────────────────
+          ["brand","domain","competitors","personas","queries","recs","save"].forEach(id =>
+            stepUpdate(id, "done", id === "brand" ? "Loaded from cache!" : "Cached")
           );
-        }
+          send({ type: "complete", brand_id: candidate.id, industry: candidate.industry, brand_name: candidate.name, brand_domain: candidate.domain });
+          // falls through to finally — no early return
+        } else {
+          // ── FULL ANALYSIS ──────────────────────────────────────────────────
+          stepUpdate("brand",       "running", "AI analysing brand profile...");
+          stepUpdate("competitors", "running", "Finding competitors...");
+          stepUpdate("recs",        "running", "Building recommendations...");
+          stepUpdate("personas",    "running", "Creating buyer personas...");
+          stepUpdate("queries",     "running", "Generating target queries...");
 
-        for (const persona of personaData) {
-          const { data: p } = await supabase.from("personas").insert({
-            brand_id:      brand.id,
-            name:          persona.name,
-            archetype:     persona.archetype,
-            age_range:     persona.age_range,
-            pain_points:   persona.pain_points,
-            goals:         persona.goals,
-            ai_tools_used: persona.ai_tools_used,
-            query_style:   persona.query_style,
-          }).select().single();
+          const [partA, partB] = await Promise.all([
+            discoverPartA(brand_name, domain).then(result => {
+              stepUpdate("brand",       "done", `Industry: ${result.brand.industry}`);
+              stepUpdate("domain",      "done", `Domain: ${domain || result.brand.domain}`);
+              stepUpdate("competitors", "done", `Found ${result.competitors.length} competitors`);
+              stepUpdate("recs",        "done", `${result.recommendations.length} recommendations`);
+              send({ type: "data", key: "brand",       payload: result.brand });
+              send({ type: "data", key: "competitors", payload: result.competitors });
+              send({ type: "data", key: "recs",        payload: result.recommendations });
+              return result;
+            }),
+            discoverPartB(brand_name, domain).then(result => {
+              const allQueries = (result.personas || []).flatMap(p => p.queries || []);
+              stepUpdate("personas", "done", `Created ${result.personas.length} personas`);
+              stepUpdate("queries",  "done", `Generated ${allQueries.length} queries`);
+              send({ type: "data", key: "personas", payload: result.personas });
+              send({ type: "data", key: "queries",  payload: allQueries });
+              return result;
+            }),
+          ]);
 
-          if (p) {
-            const pQueries = (persona.queries || []);
-            if (pQueries.length > 0) {
-              await supabase.from("queries").insert(
-                pQueries.map(q => ({
-                  brand_id:          brand!.id,
-                  persona_id:        p.id,
-                  text:              q.text,
-                  type:              q.type,
-                  intent:            q.intent,
-                  revenue_proximity: q.revenue_proximity,
-                  citations:         q.citations || [],
-                }))
-              );
+          const brandInfo      = partA.brand;
+          const competitorData = partA.competitors     || [];
+          const recsData       = partA.recommendations || [];
+          const personaData    = partB.personas        || [];
+          const finalDomain    = domain || brandInfo.domain;
+
+          stepUpdate("save", "running", "Saving to database...");
+
+          let brand: { id: string; name: string; industry: string; domain: string } | null = null;
+
+          const { data: insertedBrand, error: brandErr } = await supabase
+            .from("brands")
+            .insert({
+              name: brand_name, domain: finalDomain,
+              industry: brandInfo.industry, description: brandInfo.description,
+            })
+            .select().single();
+
+          if (brandErr) {
+            const isUniqueViolation =
+              brandErr.code === "23505" ||
+              (brandErr.message || "").toLowerCase().includes("unique") ||
+              (brandErr.message || "").toLowerCase().includes("duplicate");
+
+            if (isUniqueViolation) {
+              const { data: existingRows } = await supabase
+                .from("brands").select("id, name, industry, domain")
+                .ilike("name", brand_name.trim())
+                .order("id", { ascending: false })
+                .limit(1);
+              brand = existingRows?.[0] ?? null;
+            }
+
+            if (!brand) throw new Error(`Brand save failed: ${brandErr.message}`);
+          } else {
+            brand = insertedBrand;
+          }
+
+          if (!brand) throw new Error("Brand record unavailable after save");
+
+          if (competitorData.length > 0) {
+            await supabase.from("competitors").insert(
+              competitorData.map(c => ({
+                brand_id: brand!.id, name: c.name, domain: c.domain, type: c.type,
+              }))
+            );
+          }
+
+          for (const persona of personaData) {
+            const { data: p } = await supabase.from("personas").insert({
+              brand_id:      brand.id,
+              name:          persona.name,
+              archetype:     persona.archetype,
+              age_range:     persona.age_range,
+              pain_points:   persona.pain_points,
+              goals:         persona.goals,
+              ai_tools_used: persona.ai_tools_used,
+              query_style:   persona.query_style,
+            }).select().single();
+
+            if (p) {
+              const pQueries = (persona.queries || []);
+              if (pQueries.length > 0) {
+                await supabase.from("queries").insert(
+                  pQueries.map(q => ({
+                    brand_id:          brand!.id,
+                    persona_id:        p.id,
+                    text:              q.text,
+                    type:              q.type,
+                    intent:            q.intent,
+                    revenue_proximity: q.revenue_proximity,
+                    citations:         q.citations || [],
+                  }))
+                );
+              }
             }
           }
-        }
 
-        if (recsData.length > 0) {
-          await supabase.from("recommendations").insert(
-            recsData.map(r => ({
-              brand_id:       brand!.id,
-              title:          r.title,
-              description:    r.description,
-              category:       r.category,
-              priority:       r.priority,
-              projected_lift: r.projected_lift,
-              action_label:   r.action_label,
-            }))
-          );
-        }
+          if (recsData.length > 0) {
+            await supabase.from("recommendations").insert(
+              recsData.map(r => ({
+                brand_id:       brand!.id,
+                title:          r.title,
+                description:    r.description,
+                category:       r.category,
+                priority:       r.priority,
+                projected_lift: r.projected_lift,
+                action_label:   r.action_label,
+              }))
+            );
+          }
 
-        stepUpdate("save", "done", "All data saved");
-        send({ type: "complete", brand_id: brand.id, industry: brandInfo.industry, brand_name: brand.name, brand_domain: brand.domain });
+          stepUpdate("save", "done", "All data saved");
+          send({ type: "complete", brand_id: brand.id, industry: brandInfo.industry, brand_name: brand.name, brand_domain: brand.domain });
+        }
 
       } catch (err) {
         send({ type: "error", message: err instanceof Error ? err.message : "Unknown error" });
