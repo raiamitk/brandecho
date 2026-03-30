@@ -58,6 +58,10 @@ export async function POST(req: NextRequest) {
             stepUpdate(id, "done", id === "brand" ? "Loaded from cache!" : "Cached")
           );
           send({ type: "complete", brand_id: candidate.id, industry: candidate.industry, brand_name: candidate.name, brand_domain: candidate.domain });
+          // Yield to the event loop so Vercel/Node flushes the enqueued chunks
+          // before the stream closes. Without this, fast cache-hit responses
+          // close the stream before the proxy has a chance to forward the data.
+          await new Promise(r => setTimeout(r, 50));
 
         } else {
           // ── FULL ANALYSIS ─────────────────────────────────────────────────────
