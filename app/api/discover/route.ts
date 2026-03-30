@@ -5,7 +5,6 @@ import { discoverPartA, discoverPartB } from "@/lib/grok";
 // Discover route — runs Part A (brand+competitors+recs) and Part B
 // (personas+queries) in PARALLEL. As soon as each finishes it sends a
 // "data" SSE event so the processing page can show widgets immediately.
-// Total time ~12-15s instead of the previous 25-40s single-call approach.
 
 export const runtime     = "nodejs";
 export const maxDuration = 60;
@@ -23,12 +22,14 @@ export async function POST(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send       = (event: object) => controller.enqueue(encoder.encode(sse(event)));
+      const send = (event: object) => {
+        try { controller.enqueue(encoder.encode(sse(event))); } catch (_) {}
+      };
       const stepUpdate = (step_id: string, status: string, detail?: string) =>
         send({ type: "step_update", step_id, status, detail });
 
       try {
-        // CACHE CHECK
+        // ── CACHE CHECK ────────────────────────────────────────────────────────
         stepUpdate("brand", "running", "Checking cache...");
         const { data: cachedRows } = await supabase
           .from("brands").select("id, name, industry, domain")
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
           .limit(1);
         const candidate = cachedRows?.[0] ?? null;
 
-        // Check if this candidate has queries (fully-analysed record)
+        // Verify the candidate has associated queries (fully-analysed record)
         let cacheValid = false;
         if (candidate) {
           const { count } = await supabase
@@ -46,20 +47,20 @@ export async function POST(req: NextRequest) {
             .eq("brand_id", candidate.id);
           cacheValid = (count ?? 0) > 0;
           if (!cacheValid) {
-            // Stale/incomplete record — delete it and re-analyse
+            // Stale/incomplete record — delete and re-analyse
             await supabase.from("brands").delete().eq("id", candidate.id);
           }
         }
 
         if (cacheValid && candidate) {
-          // ── CACHE HIT ──────────────────────────────────────────────────────
+          // ── CACHE HIT ────────────────────────────────────────────────────────
           ["brand","domain","competitors","personas","queries","recs","save"].forEach(id =>
             stepUpdate(id, "done", id === "brand" ? "Loaded from cache!" : "Cached")
           );
           send({ type: "complete", brand_id: candidate.id, industry: candidate.industry, brand_name: candidate.name, brand_domain: candidate.domain });
-          // falls through to finally — no early return
+
         } else {
-          // ── FULL ANALYSIS ──────────────────────────────────────────────────
+          // ── FULL ANALYSIS ─────────────────────────────────────────────────────
           stepUpdate("brand",       "running", "AI analysing brand profile...");
           stepUpdate("competitors", "running", "Finding competitors...");
           stepUpdate("recs",        "running", "Building recommendations...");
@@ -95,6 +96,9 @@ export async function POST(req: NextRequest) {
 
           stepUpdate("save", "running", "Saving to database...");
 
+          // Try INSERT; handle unique-constraint race (code 23505) gracefully.
+          // IMPORTANT: do NOT use .order("created_at") — that column may not
+          // exist and causes Supabase to silently return null.
           let brand: { id: string; name: string; industry: string; domain: string } | null = null;
 
           const { data: insertedBrand, error: brandErr } = await supabase
@@ -112,6 +116,7 @@ export async function POST(req: NextRequest) {
               (brandErr.message || "").toLowerCase().includes("duplicate");
 
             if (isUniqueViolation) {
+              // Brand inserted between cache-check and now — fetch by id DESC (no created_at)
               const { data: existingRows } = await supabase
                 .from("brands").select("id, name, industry, domain")
                 .ilike("name", brand_name.trim())
@@ -148,7 +153,7 @@ export async function POST(req: NextRequest) {
             }).select().single();
 
             if (p) {
-              const pQueries = (persona.queries || []);
+              const pQueries = persona.queries || [];
               if (pQueries.length > 0) {
                 await supabase.from("queries").insert(
                   pQueries.map(q => ({
@@ -186,7 +191,7 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         send({ type: "error", message: err instanceof Error ? err.message : "Unknown error" });
       } finally {
-        controller.close();
+        try { controller.close(); } catch (_) {}
       }
     },
   });
