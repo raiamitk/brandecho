@@ -174,11 +174,11 @@ export async function discoverPartB(brandName: string, domain?: string, geo?: { 
     },
     body: JSON.stringify({
       model:      CLAUDE_MODEL_FAST,
-      max_tokens: 4500,
+      max_tokens: 2800,
       system:     "You are a user research and AEO expert. Return ONLY valid JSON. No markdown.",
       messages: [{
         role: "user",
-        content: `For brand "${brandName}"${domain ? ` (website: ${domain})` : ""}, generate 3 diverse buyer personas with queries.
+        content: `For brand "${brandName}"${domain ? ` (website: ${domain})` : ""}, generate 3 buyer personas with queries.
 Geo: ${geo?.city ? `${geo.city}, ` : ""}${geo?.country || "India"}
 Return JSON:
 {
@@ -188,35 +188,24 @@ Return JSON:
       "archetype": "label",
       "age_range": "22-35",
       "income_level": "budget|mid|premium",
-      "pain_points": ["p1", "p2"],
+      "pain_points": ["p1","p2"],
       "goals": ["g1"],
       "ai_tools_used": ["ChatGPT"],
       "query_style": "casual",
       "queries": [
-        {
-          "text": "natural question as typed into ChatGPT — NO brand name",
-          "type": "aeo|geo|seo_longtail",
-          "intent": "awareness|consideration|comparison|purchase",
-          "revenue_proximity": 75,
-          "funnel_stage": "TOFU|MOFU|BOFU",
-          "citations": [
-            {"source":"Site Name","url_pattern":"domain.com","type":"forum|review_site|comparison_site|news|expert_guide|video","why":"one sentence"}
-          ]
-        }
+        {"text":"question as typed into ChatGPT — NO brand name","type":"aeo","intent":"awareness","revenue_proximity":30,"funnel_stage":"TOFU"},
+        {"text":"question","type":"aeo","intent":"awareness","revenue_proximity":35,"funnel_stage":"TOFU"},
+        {"text":"question","type":"geo","intent":"awareness","revenue_proximity":40,"funnel_stage":"TOFU"},
+        {"text":"question","type":"aeo","intent":"comparison","revenue_proximity":60,"funnel_stage":"MOFU"},
+        {"text":"question","type":"aeo","intent":"purchase","revenue_proximity":85,"funnel_stage":"BOFU"}
       ]
     }
   ]
 }
-RULES:
-- 3 personas (budget, mid, premium income level)
-- 5 queries each persona. EXACTLY 3 TOFU + 1 MOFU + 1 BOFU per persona.
-- 1 citation per query. NEVER include brand name in query text.
-- funnel_stage: TOFU=awareness(rev_prox 20-49), MOFU=consideration/comparison(50-79), BOFU=purchase(80-100)
-- type field RULES: TOFU queries → use "aeo" or "geo". MOFU queries → use "aeo". BOFU queries → use "aeo" or "geo". AVOID "seo_longtail" — these must be conversational questions people ask AI assistants, not Google keywords.
-- Queries must sound like real people talking to ChatGPT/Gemini, e.g. "what is the best X for Y?" not "best X Y Z brand".`,
+RULES: 3 personas (budget/mid/premium). Each has EXACTLY 5 queries: 3 TOFU + 1 MOFU + 1 BOFU. NO brand name in query text. TOFU rev_prox 20-49, MOFU 50-79, BOFU 80-100. Use "aeo" or "geo" types only.`,
       }],
     }),
-    signal: AbortSignal.timeout(40000),
+    signal: AbortSignal.timeout(50000),
   });
   if (!res.ok) { const err = await res.text(); throw new Error(`Claude Part B error ${res.status}: ${err}`); }
   const data = await res.json();
