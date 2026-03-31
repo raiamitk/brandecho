@@ -207,8 +207,13 @@ Return JSON:
     }
   ]
 }
-RULES: 3 personas (budget, mid, premium). 5 queries each persona. EXACTLY 3 TOFU + 1 MOFU + 1 BOFU per persona. 1 citation per query. NEVER include brand name in query text.
-funnel_stage: TOFU=awareness(rev_prox 20-49), MOFU=consideration/comparison(50-79), BOFU=purchase(80-100).`,
+RULES:
+- 3 personas (budget, mid, premium income level)
+- 5 queries each persona. EXACTLY 3 TOFU + 1 MOFU + 1 BOFU per persona.
+- 1 citation per query. NEVER include brand name in query text.
+- funnel_stage: TOFU=awareness(rev_prox 20-49), MOFU=consideration/comparison(50-79), BOFU=purchase(80-100)
+- type field RULES: TOFU queries → use "aeo" or "geo". MOFU queries → use "aeo". BOFU queries → use "aeo" or "geo". AVOID "seo_longtail" — these must be conversational questions people ask AI assistants, not Google keywords.
+- Queries must sound like real people talking to ChatGPT/Gemini, e.g. "what is the best X for Y?" not "best X Y Z brand".`,
       }],
     }),
     signal: AbortSignal.timeout(40000),
@@ -453,7 +458,7 @@ export async function scorePlatformVisibility(
   industry: string,
   description?: string,
   geo?: { country: string; city?: string }
-): Promise<{ platform: string; ai_visibility_score: number; share_of_voice: number; sentiment: "positive" | "neutral" | "negative"; reasoning: string }[]> {
+): Promise<{ platform: string; ai_visibility_score: number; share_of_voice: number; sentiment: "positive" | "neutral" | "negative"; reasoning: string; mentions: number; avg_position: number; has_citations: boolean; insight: string }[]> {
   const geoCtx = geo?.city ? `${geo.city}, ${geo.country}` : (geo?.country || "India");
   const raw = await claudeChat(
     "You are an AI visibility analyst. Return ONLY valid JSON. No markdown.",
@@ -461,7 +466,7 @@ export async function scorePlatformVisibility(
 
 Estimate how well "${brandName}" appears when users ask about its category on each AI platform.
 
-Return a JSON array for exactly these 4 platforms: Gemini, Grok, Claude, ChatGPT
+Return a JSON array for exactly these 4 platforms in this order: Gemini, Grok, Claude, ChatGPT
 
 [
   {
@@ -469,15 +474,24 @@ Return a JSON array for exactly these 4 platforms: Gemini, Grok, Claude, ChatGPT
     "ai_visibility_score": 0-100,
     "share_of_voice": 0-100,
     "sentiment": "positive|neutral|negative",
-    "reasoning": "one sentence why"
+    "reasoning": "2-sentence explanation of why this score — mention specific factors like brand authority, content quality, competitor strength",
+    "mentions": 2,
+    "avg_position": 3,
+    "has_citations": true,
+    "insight": "one specific actionable thing the brand should do to improve on this platform"
   }
 ]
 
-Scoring guide:
+Field guide:
 - ai_visibility_score: How often the brand appears in AI answers for its category (0=never, 100=always)
-- share_of_voice: % of category conversations where brand is mentioned vs competitors
+- share_of_voice: % of category conversations where brand is mentioned vs competitors (0-100)
 - sentiment: Overall tone when brand IS mentioned (positive=praised, neutral=just listed, negative=criticized)
-- Be realistic: established brands score 40-75, category leaders 65-85, niche brands 25-55`
+- mentions: Estimated average number of times brand is mentioned per relevant AI answer (0-5)
+- avg_position: Where in the answer the brand typically appears (1=first, 5=last or buried)
+- has_citations: true if the platform tends to link/cite the brand's website, false if just name-drop
+- insight: One specific, actionable recommendation to improve visibility on THIS platform
+- Be realistic: established brands 40-75, category leaders 65-85, niche brands 25-55
+- Vary scores meaningfully across platforms — each platform has different training data and citation patterns`
   );
   return JSON.parse(raw);
 }

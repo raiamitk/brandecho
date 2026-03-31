@@ -48,6 +48,10 @@ interface PlatformScore {
   share_of_voice: number;
   sentiment: "positive" | "neutral" | "negative";
   reasoning: string;
+  mentions: number;
+  avg_position: number;
+  has_citations: boolean;
+  insight: string;
 }
 
 interface VisScore {
@@ -580,10 +584,10 @@ export default function DashboardPage() {
         </p>
         <div style={{ border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
           {/* Table header */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 74px 110px 180px 20px",
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 74px 80px 110px 160px 20px",
             padding: "10px 20px", background: "#f3f4f6",
             fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            <span>Query</span><span>Type</span><span>Intent</span><span>Purchase Stage</span><span />
+            <span>Query</span><span>Type</span><span>Funnel</span><span>Intent</span><span>Purchase Stage</span><span />
           </div>
           {queries.map((q, i) => {
             const ts    = TYPE_STYLE[q.type] || TYPE_STYLE.seo;
@@ -603,7 +607,7 @@ export default function DashboardPage() {
               <div key={q.id} style={{ borderTop: `1px solid ${BORD}`, background: open ? "#fafffe" : i % 2 === 1 ? "rgba(0,0,0,0.012)" : BG }}>
                 {/* Main row — clickable */}
                 <button onClick={() => setExpandedQueryId(open ? null : q.id)}
-                  style={{ width: "100%", display: "grid", gridTemplateColumns: "1fr 74px 110px 180px 20px",
+                  style={{ width: "100%", display: "grid", gridTemplateColumns: "1fr 74px 80px 110px 160px 20px",
                     padding: "13px 20px", alignItems: "center", background: "none", border: "none",
                     cursor: "pointer", textAlign: "left", gap: 0 }}>
                   <span style={{ fontSize: 13, color: T1, paddingRight: 16 }}>{q.text}</span>
@@ -611,6 +615,19 @@ export default function DashboardPage() {
                     fontSize: 11, fontWeight: 600, background: ts.bg, color: ts.color, justifySelf: "start" }}>
                     {q.type === "seo_longtail" ? "SEO" : q.type.toUpperCase()}
                   </span>
+                  {(() => {
+                    const fs = (q as Record<string,unknown>).funnel_stage as string || "";
+                    const fStyle = fs === "TOFU" ? { bg: "#dbeafe", color: "#1d4ed8" }
+                                 : fs === "MOFU" ? { bg: "#fef3c7", color: "#d97706" }
+                                 : fs === "BOFU" ? { bg: "#dcfce7", color: "#15803d" }
+                                 : { bg: SURF, color: T3 };
+                    return (
+                      <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 99,
+                        fontSize: 11, fontWeight: 700, background: fStyle.bg, color: fStyle.color, justifySelf: "start" }}>
+                        {fs || "—"}
+                      </span>
+                    );
+                  })()}
                   <span style={{ fontSize: 12, color: T2, textTransform: "capitalize" }}>{q.intent}</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ height: 6, flex: 1, borderRadius: 99, background: BORD, overflow: "hidden" }}>
@@ -734,10 +751,12 @@ export default function DashboardPage() {
 
   // PLATFORM VISIBILITY TAB ─────────────────────────────────────────────────
   const PlatformTab = () => {
+    const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
+
     if (platformLoading) return (
       <div style={{ textAlign: "center", padding: "72px 0" }}>
         <Spinner />
-        <p style={{ color: T3, marginTop: 16, fontSize: 14 }}>Analysing across all AI platforms…</p>
+        <p style={{ color: T3, marginTop: 16, fontSize: 14 }}>Analysing brand presence across Gemini, Grok, Claude & ChatGPT…</p>
       </div>
     );
 
@@ -745,7 +764,7 @@ export default function DashboardPage() {
       <RunCTA
         icon={Eye} accentColor="#00FF96"
         title="Per-Platform AI Visibility"
-        desc="Estimate how well your brand appears on Gemini, Grok, Claude and ChatGPT — with share of voice and sentiment analysis."
+        desc="See exactly how your brand appears on Gemini, Grok, Claude and ChatGPT — with share of voice, sentiment, and a plain-English explanation of why you scored that way."
         label="Run Platform Visibility"
         loading={platformLoading}
         onClick={runPlatformVisibility}
@@ -763,93 +782,157 @@ export default function DashboardPage() {
       </div>
     );
 
-    const avgScore = platformScores.length
-      ? Math.round(platformScores.reduce((s, p) => s + p.ai_visibility_score, 0) / platformScores.length)
-      : 0;
+    const avgScore   = platformScores.length
+      ? Math.round(platformScores.reduce((s, p) => s + p.ai_visibility_score, 0) / platformScores.length) : 0;
+    const avgSoV     = platformScores.length
+      ? Math.round(platformScores.reduce((s, p) => s + p.share_of_voice, 0) / platformScores.length) : 0;
 
-    const scoreColor  = (s: number) => s >= 70 ? "#15803d" : s >= 40 ? "#d97706" : "#dc2626";
-    const scoreBg     = (s: number) => s >= 70 ? "#dcfce7" : s >= 40 ? "#fef3c7" : "#fef2f2";
-
-    const sentimentColor = (s: string) =>
-      s === "positive" ? "#15803d" : s === "negative" ? "#dc2626" : "#d97706";
-    const sentimentBg = (s: string) =>
-      s === "positive" ? "#dcfce7" : s === "negative" ? "#fef2f2" : "#fef3c7";
-
-    const platformEmoji: Record<string, string> = {
-      Gemini: "🔵", Grok: "🤖", Claude: "🟣", ChatGPT: "🟢",
-    };
+    const scoreColor = (s: number) => s >= 70 ? "#15803d" : s >= 40 ? "#d97706" : "#dc2626";
+    const scoreBg    = (s: number) => s >= 70 ? "#dcfce7" : s >= 40 ? "#fef3c7" : "#fef2f2";
+    const sentimentColor = (s: string) => s === "positive" ? "#15803d" : s === "negative" ? "#dc2626" : "#d97706";
+    const sentimentBg    = (s: string) => s === "positive" ? "#dcfce7" : s === "negative" ? "#fef2f2" : "#fef3c7";
+    const platformEmoji: Record<string, string> = { Gemini: "🔵", Grok: "🤖", Claude: "🟣", ChatGPT: "🟢" };
+    const platformColor: Record<string, string> = { Gemini: "#1a73e8", Grok: "#000", Claude: "#7c3aed", ChatGPT: "#10a37f" };
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
         <ReRunBar label="Re-run Platform Visibility" loading={platformLoading} accentColor="#00FF96"
           onClick={() => { setPlatformDone(false); setPlatformScores([]); runPlatformVisibility(); }} />
 
-        {/* Overall average banner */}
-        <div style={{ background: scoreBg(avgScore), border: `1px solid ${scoreColor(avgScore)}40`,
-          borderRadius: 16, padding: "20px 28px", display: "flex", alignItems: "center", gap: 20 }}>
-          <div>
-            <div style={{ fontSize: 42, fontWeight: 900, color: scoreColor(avgScore), lineHeight: 1 }}>{avgScore}</div>
-            <div style={{ fontSize: 13, color: scoreColor(avgScore), fontWeight: 600, marginTop: 4 }}>Overall AI Visibility</div>
-          </div>
-          <div style={{ flex: 1, fontSize: 13, color: T2, lineHeight: 1.6 }}>
-            Average across {platformScores.length} AI platforms.{" "}
-            {avgScore >= 70 ? "Strong presence — your brand is frequently cited in AI answers."
-              : avgScore >= 40 ? "Moderate presence — room to grow citations and share of voice."
-              : "Low presence — significant opportunity to improve AI visibility."}
-          </div>
+        {/* KPI summary bar */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+          {[
+            { label: "Overall AI Visibility", value: `${avgScore}/100`, color: scoreColor(avgScore), bg: scoreBg(avgScore) },
+            { label: "Avg Share of Voice",    value: `${avgSoV}%`,      color: scoreColor(avgSoV),   bg: scoreBg(avgSoV) },
+            { label: "Platforms Analysed",    value: `${platformScores.length}`, color: AT, bg: "#f0fdf4" },
+          ].map(({ label, value, color, bg }) => (
+            <div key={label} style={{ background: bg, border: `1px solid ${color}30`, borderRadius: 16, padding: "20px 24px" }}>
+              <div style={{ fontSize: 32, fontWeight: 900, color, lineHeight: 1, marginBottom: 4 }}>{value}</div>
+              <div style={{ fontSize: 13, color, fontWeight: 600 }}>{label}</div>
+            </div>
+          ))}
         </div>
 
         {/* Platform cards 2×2 grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16 }}>
-          {platformScores.map(p => (
-            <div key={p.platform} style={{ background: SURF, border: `1px solid ${BORD}`,
-              borderRadius: 18, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+          {platformScores.map(p => {
+            const open = expandedPlatform === p.platform;
+            const pColor = platformColor[p.platform] || "#6b7280";
+            return (
+              <div key={p.platform} style={{ background: BG, border: `2px solid ${open ? pColor : BORD}`,
+                borderRadius: 20, overflow: "hidden", transition: "border-color 0.2s" }}>
 
-              {/* Header */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 22 }}>{platformEmoji[p.platform] || "🤖"}</span>
-                <span style={{ fontSize: 16, fontWeight: 700, color: T1 }}>{p.platform}</span>
-                <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "3px 10px",
-                  borderRadius: 99, background: sentimentBg(p.sentiment), color: sentimentColor(p.sentiment) }}>
-                  {p.sentiment}
-                </span>
-              </div>
+                {/* Card top */}
+                <div style={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+                  {/* Header row */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: `${pColor}15`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                      {platformEmoji[p.platform] || "🤖"}
+                    </div>
+                    <span style={{ fontSize: 17, fontWeight: 800, color: T1 }}>{p.platform}</span>
+                    <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "4px 12px",
+                      borderRadius: 99, background: sentimentBg(p.sentiment), color: sentimentColor(p.sentiment),
+                      textTransform: "capitalize" }}>
+                      {p.sentiment}
+                    </span>
+                  </div>
 
-              {/* Big score */}
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
-                <span style={{ fontSize: 48, fontWeight: 900, lineHeight: 1, color: scoreColor(p.ai_visibility_score) }}>
-                  {p.ai_visibility_score}
-                </span>
-                <span style={{ fontSize: 16, color: T3, marginBottom: 6 }}>/100</span>
-                <span style={{ marginLeft: 4, fontSize: 11, fontWeight: 700, padding: "3px 10px",
-                  borderRadius: 99, background: scoreBg(p.ai_visibility_score),
-                  color: scoreColor(p.ai_visibility_score), marginBottom: 6 }}>
-                  AI Visibility
-                </span>
-              </div>
+                  {/* Score + SoV side by side */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                    <div style={{ background: scoreBg(p.ai_visibility_score), borderRadius: 14, padding: "14px 18px" }}>
+                      <div style={{ fontSize: 36, fontWeight: 900, color: scoreColor(p.ai_visibility_score), lineHeight: 1 }}>
+                        {p.ai_visibility_score}
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor(p.ai_visibility_score),
+                        textTransform: "uppercase", letterSpacing: "0.4px", marginTop: 4 }}>
+                        AI Visibility Score
+                      </div>
+                    </div>
+                    <div style={{ background: SURF, borderRadius: 14, padding: "14px 18px" }}>
+                      <div style={{ fontSize: 36, fontWeight: 900, color: T1, lineHeight: 1 }}>
+                        {p.share_of_voice}%
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: T3,
+                        textTransform: "uppercase", letterSpacing: "0.4px", marginTop: 4 }}>
+                        Share of Voice
+                      </div>
+                    </div>
+                  </div>
 
-              {/* Share of Voice bar */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.4px" }}>
-                    Share of Voice
-                  </span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: T1 }}>{p.share_of_voice}%</span>
+                  {/* SoV bar */}
+                  <div>
+                    <div style={{ height: 8, borderRadius: 99, background: "#e5e7eb", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${p.share_of_voice}%`,
+                        background: `linear-gradient(90deg, ${pColor}, ${pColor}99)`,
+                        borderRadius: 99, transition: "width 0.8s ease" }} />
+                    </div>
+                  </div>
+
+                  {/* Quick stats row */}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {p.mentions != null && (
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
+                        background: "#f3f4f6", color: T2 }}>
+                        ~{p.mentions} mentions
+                      </span>
+                    )}
+                    {p.avg_position != null && (
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
+                        background: "#f3f4f6", color: T2 }}>
+                        Avg position #{p.avg_position}
+                      </span>
+                    )}
+                    {p.has_citations != null && (
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
+                        background: p.has_citations ? "#dcfce7" : "#fef2f2",
+                        color: p.has_citations ? "#15803d" : "#dc2626" }}>
+                        {p.has_citations ? "✓ Citation links" : "✗ Name-drop only"}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div style={{ height: 8, borderRadius: 99, background: BORD, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${p.share_of_voice}%`,
-                    background: scoreColor(p.share_of_voice), borderRadius: 99,
-                    transition: "width 0.6s ease" }} />
-                </div>
-              </div>
 
-              {/* Reasoning */}
-              <div style={{ fontSize: 12, color: T2, lineHeight: 1.6, background: BG,
-                border: `1px solid ${BORD}`, borderRadius: 10, padding: "10px 12px" }}>
-                {p.reasoning}
+                {/* "Why this score?" toggle */}
+                <button onClick={() => setExpandedPlatform(open ? null : p.platform)}
+                  style={{ width: "100%", padding: "12px 24px", background: `${pColor}08`,
+                    borderTop: `1px solid ${BORD}`, border: "none", cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    fontSize: 12, fontWeight: 700, color: pColor }}>
+                  Why this score?
+                  {open ? <ChevronUp style={{ width: 14, height: 14 }} /> : <ChevronDown style={{ width: 14, height: 14 }} />}
+                </button>
+
+                {open && (
+                  <div style={{ padding: "16px 24px", borderTop: `1px solid ${BORD}`,
+                    background: `${pColor}06`, display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ fontSize: 13, color: T2, lineHeight: 1.7 }}>
+                      <strong style={{ color: T1 }}>Analysis: </strong>{p.reasoning}
+                    </div>
+                    {p.insight && (
+                      <div style={{ background: BG, border: `1px solid ${pColor}30`, borderLeft: `3px solid ${pColor}`,
+                        borderRadius: 10, padding: "10px 14px", fontSize: 12, color: T2, lineHeight: 1.6 }}>
+                        💡 <strong>Action: </strong>{p.insight}
+                      </div>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      {[
+                        { label: "Brand Mentions (est.)", value: p.mentions != null ? `~${p.mentions} per query` : "Unknown" },
+                        { label: "Answer Position",       value: p.avg_position != null ? `#${p.avg_position} of 5` : "Unknown" },
+                        { label: "Citation Type",         value: p.has_citations ? "Linked citation" : "Name-drop only" },
+                        { label: "Sentiment",             value: p.sentiment?.charAt(0).toUpperCase() + p.sentiment?.slice(1) || "—" },
+                      ].map(({ label, value }) => (
+                        <div key={label} style={{ background: BG, border: `1px solid ${BORD}`, borderRadius: 10, padding: "10px 14px" }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>{label}</div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: T1 }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
