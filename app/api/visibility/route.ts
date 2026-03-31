@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { scoreQueryVisibility } from "@/lib/grok";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
 const CLAUDE_HAIKU   = "claude-haiku-4-5-20251001";
@@ -90,26 +84,17 @@ function parseAICheckResults(
 
 export async function POST(req: NextRequest) {
   try {
-    const { brand_id } = await req.json();
-    if (!brand_id) return NextResponse.json({ error: "brand_id required" }, { status: 400 });
+    const { brand_name, industry, description, queries } = await req.json();
+    if (!brand_name || !queries?.length) return NextResponse.json({ error: "brand_name and queries required" }, { status: 400 });
 
-    // Load brand + queries from Supabase
-    const [brandRes, queryRes] = await Promise.all([
-      supabase.from("brands").select("name, industry, description").eq("id", brand_id).single(),
-      supabase.from("queries").select("id, text, type, intent, revenue_proximity").eq("brand_id", brand_id),
-    ]);
-
-    if (!brandRes.data) return NextResponse.json({ error: "Brand not found" }, { status: 404 });
-
-    const brand   = brandRes.data;
-    const queries = queryRes.data || [];
+    const brand = { name: brand_name, industry, description };
 
     // ── Step 1: Claude batch scores all queries ────────────────────────────────
     const claudeScores = await scoreQueryVisibility(brand.name, brand.industry, queries, brand.description);
 
     // ── Step 2: Live AI check — top 5 queries, Gemini first then Claude fallback
-    const top5       = [...queries].sort((a, b) => b.revenue_proximity - a.revenue_proximity).slice(0, 5);
-    const queryLines = top5.map((q, i) => `${i + 1}. ${q.text}`).join("\n");
+    const top5       = [...queries].sort((a: { revenue_proximity: number }, b: { revenue_proximity: number }) => b.revenue_proximity - a.revenue_proximity).slice(0, 5);
+    const queryLines = top5.map((q: { text: string }, i: number) => `${i + 1}. ${q.text}`).join("\n");
     let aiCheckResults: AICheckResult = {};
     let aiCheckSource = "none";
 
@@ -132,7 +117,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Step 3: Build combined results ────────────────────────────────────────
-    const results = queries.map((q) => {
+    const results = queries.map((q: { id: string; text: string; type: string; revenue_proximity: number }) => {
       const claude     = claudeScores[q.id] || { claude_score: 0, web_score: 0, reason: "" };
       const aiCheck    = aiCheckResults[q.id];
       const aiScore    = aiCheck?.available ? aiCheck.score : -1;
@@ -158,21 +143,7 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    // ── Step 4: Upsert to Supabase ─────────────────────────────────────────────
-    await supabase.from("visibility_scores").upsert(
-      results.map(r => ({
-        brand_id,
-        query_id:       r.query_id,
-        claude_score:   r.claude_score,
-        web_score:      r.web_score,
-        gemini_check:   r.gemini_check,
-        gemini_excerpt: r.gemini_excerpt,
-        combined_score: r.combined_score,
-      })),
-      { onConflict: "brand_id,query_id" }
-    );
-
-    const avg = Math.round(results.reduce((s, r) => s + r.combined_score, 0) / (results.length || 1));
+    const avg = Math.round(results.reduce((s: number, r: { combined_score: number }) => s + r.combined_score, 0) / (results.length || 1));
 
     return NextResponse.json({
       brand_name:       brand.name,

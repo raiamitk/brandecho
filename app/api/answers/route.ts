@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
 // ── AI Answer Preview
 // Strategy: try Gemini first (1 attempt + 1 retry), then fall back to Claude Haiku.
@@ -10,11 +9,6 @@ export const maxDuration = 55;
 
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
 const CLAUDE_HAIKU   = "claude-haiku-4-5-20251001";
@@ -103,35 +97,26 @@ async function tryClaude(prompt: string): Promise<{ text: string; ok: boolean }>
 
 export async function POST(req: NextRequest) {
   try {
-    const { brand_id } = await req.json();
-    if (!brand_id) return NextResponse.json({ error: "brand_id required" }, { status: 400 });
+    const { brand_name, competitors, queries } = await req.json();
+    if (!brand_name || !queries?.length) return NextResponse.json({ error: "brand_name and queries required" }, { status: 400 });
 
-    // Load brand + top 8 queries + competitors
-    const [brandRes, queryRes, compRes] = await Promise.all([
-      supabase.from("brands").select("name, industry").eq("id", brand_id).single(),
-      supabase.from("queries").select("id, text, type, intent, revenue_proximity")
-        .eq("brand_id", brand_id)
-        .order("revenue_proximity", { ascending: false })
-        .limit(8),
-      supabase.from("competitors").select("name").eq("brand_id", brand_id),
-    ]);
+    const competitorNames: string[] = Array.isArray(competitors) ? competitors : [];
 
-    if (!brandRes.data) return NextResponse.json({ error: "Brand not found" }, { status: 404 });
+    // Use top 8 queries sorted by revenue_proximity
+    const sortedQueries = [...queries]
+      .sort((a: { revenue_proximity: number }, b: { revenue_proximity: number }) => b.revenue_proximity - a.revenue_proximity)
+      .slice(0, 8);
 
-    const brandName       = brandRes.data.name;
-    const queries         = queryRes.data || [];
-    const competitorNames = (compRes.data || []).map((c: { name: string }) => c.name);
-
-    if (!queries.length) {
+    if (!sortedQueries.length) {
       return NextResponse.json({
-        brand_name: brandName, competitor_names: competitorNames,
+        brand_name, competitor_names: competitorNames,
         total_queries: 0, brand_mentioned_count: 0, competitor_only_count: 0,
         available: true, ai_source: "none", answers: [],
       });
     }
 
-    const queryLines = queries.map((q, i) => `${i + 1}. ${q.text}`).join("\n");
-    const prompt     = buildPrompt(queryLines, queries.length);
+    const queryLines = sortedQueries.map((q: { text: string }, i: number) => `${i + 1}. ${q.text}`).join("\n");
+    const prompt     = buildPrompt(queryLines, sortedQueries.length);
 
     // ── 1. Try Gemini ──────────────────────────────────────────────────────────
     let rawText  = "";
@@ -155,11 +140,11 @@ export async function POST(req: NextRequest) {
       } else {
         // Both failed
         return NextResponse.json({
-          brand_name: brandName, competitor_names: competitorNames,
-          total_queries: queries.length, brand_mentioned_count: 0, competitor_only_count: 0,
+          brand_name, competitor_names: competitorNames,
+          total_queries: sortedQueries.length, brand_mentioned_count: 0, competitor_only_count: 0,
           available: false, ai_source: "none",
           error: "Could not reach AI services — please try again shortly",
-          answers: queries.map(q => ({
+          answers: sortedQueries.map((q: { id: string; text: string; type: string; revenue_proximity: number }) => ({
             query_id: q.id, query_text: q.text, type: q.type,
             revenue_proximity: q.revenue_proximity,
             answer: "", brand_mentioned: false, brand_mention_count: 0,
@@ -170,13 +155,13 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 3. Parse & annotate answers ────────────────────────────────────────────
-    const parsed  = parseAnswers(rawText, queries.length);
+    const parsed  = parseAnswers(rawText, sortedQueries.length);
 
-    const answers = queries.map((q, i) => {
+    const answers = sortedQueries.map((q: { id: string; text: string; type: string; revenue_proximity: number }, i: number) => {
       const item   = parsed.find(p => p.index === i + 1) || parsed[i];
       const answer: string = item?.answer || "";
       const lower  = answer.toLowerCase();
-      const bLow   = brandName.toLowerCase();
+      const bLow   = brand_name.toLowerCase();
 
       const brandMentionCount = (
         lower.match(new RegExp(bLow.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []
@@ -205,9 +190,9 @@ export async function POST(req: NextRequest) {
     ).length;
 
     return NextResponse.json({
-      brand_name:            brandName,
+      brand_name,
       competitor_names:      competitorNames,
-      total_queries:         queries.length,
+      total_queries:         sortedQueries.length,
       brand_mentioned_count: mentionedCount,
       competitor_only_count: competitorOnlyCount,
       available:             true,

@@ -144,6 +144,19 @@ export default function ProcessingPage() {
             const finalDomain = (event.brand_domain as string) || sessionStorage.getItem("brand_domain") || domain;
             sessionStorage.setItem("brand_id",   event.brand_id as string);
             sessionStorage.setItem("brand_name", finalName);
+
+            // Save full analysis to localStorage for DB-free dashboard
+            if (event.payload) {
+              try {
+                localStorage.setItem("brandecho_analysis", JSON.stringify({
+                  brand_id:   event.brand_id,
+                  brand_name: finalName,
+                  brand_domain: finalDomain,
+                  ...(event.payload as object),
+                }));
+              } catch (_) {}
+            }
+
             saveBrand({
               id:         event.brand_id as string,
               name:       finalName,

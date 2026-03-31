@@ -8,7 +8,6 @@ import {
   CheckCircle, XCircle, ChevronDown, ChevronUp, Copy, Check, Bot,
 } from "lucide-react";
 import type { Brand, Persona, Query, Competitor, Recommendation } from "@/lib/types";
-import { supabase } from "@/lib/supabase";
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 const A    = "#00FF96";
@@ -192,52 +191,79 @@ export default function DashboardPage() {
   }, []);
 
   const loadData = async (brandId: string) => {
-    const [bR, pR, qR, cR, rR] = await Promise.all([
-      supabase.from("brands").select("*").eq("id", brandId).single(),
-      supabase.from("personas").select("*").eq("brand_id", brandId),
-      supabase.from("queries").select("*").eq("brand_id", brandId),
-      supabase.from("competitors").select("*").eq("brand_id", brandId),
-      supabase.from("recommendations").select("*").eq("brand_id", brandId).order("priority"),
-    ]);
-    if (bR.data) setBrand(bR.data);
-    if (pR.data) setPersonas(pR.data);
-    if (qR.data) setQueries(qR.data);
-    if (cR.data) setCompetitors(cR.data);
-    if (rR.data) setRecs(rR.data);
+    try {
+      const raw = localStorage.getItem("brandecho_analysis");
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data.brand)         setBrand({ id: brandId, ...data.brand, name: data.brand_name || sessionStorage.getItem("brand_name") || "" });
+        if (data.personas)      setPersonas(data.personas.map((p: Record<string,unknown>, i: number) => ({ id: `p_${i}`, brand_id: brandId, ...p })));
+        if (data.queries)       setQueries(data.queries.map((q: Record<string,unknown>) => ({ brand_id: brandId, ...q })));
+        if (data.competitors)   setCompetitors(data.competitors.map((c: Record<string,unknown>, i: number) => ({ id: `c_${i}`, brand_id: brandId, ...c })));
+        if (data.recommendations) setRecs(data.recommendations.map((r: Record<string,unknown>, i: number) => ({ id: `r_${i}`, brand_id: brandId, ...r })));
+      }
+    } catch (_) {}
     setCoreLoading(false);
   };
 
   // ── API runners ─────────────────────────────────────────────────────────────
   const runVisibility = async () => {
-    const brand_id = sessionStorage.getItem("brand_id");
-    if (!brand_id) return;
+    if (!brand || queries.length === 0) return;
     setVisLoading(true);
     try {
-      const res  = await fetch("/api/visibility", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id }) });
+      const res = await fetch("/api/visibility", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brand_name:  brand.name,
+          industry:    brand.industry,
+          description: brand.description,
+          queries:     queries.map(q => ({ id: q.id, text: q.text, type: q.type, intent: q.intent, revenue_proximity: q.revenue_proximity })),
+        }),
+      });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
       setVisData(data);
-    } catch (e) { console.error(e); }
-    setVisLoading(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setVisLoading(false);
+    }
   };
 
   const runBriefs = async () => {
-    const brand_id = sessionStorage.getItem("brand_id");
-    if (!brand_id) return;
+    if (!brand || queries.length === 0) return;
     setBriefsLoading(true);
     try {
-      const res  = await fetch("/api/briefs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id }) });
+      const res = await fetch("/api/briefs", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brand_name: brand.name,
+          industry:   brand.industry,
+          queries:    queries.map(q => ({ id: q.id, text: q.text, intent: q.intent, type: q.type, revenue_proximity: q.revenue_proximity })),
+        }),
+      });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
       setBriefsData(data.briefs || []);
-    } catch (e) { console.error(e); }
-    setBriefsLoading(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBriefsLoading(false);
+    }
   };
 
   const runGap = async () => {
-    const brand_id = sessionStorage.getItem("brand_id");
-    if (!brand_id) return;
+    if (!brand || queries.length === 0) return;
     setGapLoading(true);
     try {
-      const res  = await fetch("/api/competitors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id }) });
+      const res = await fetch("/api/competitors", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brand_name:  brand.name,
+          description: brand.description,
+          competitors: competitors.map(c => ({ name: c.name, type: c.type })),
+          queries:     queries.map(q => ({ id: q.id, text: q.text, type: q.type, intent: q.intent })),
+        }),
+      });
       const data = await res.json();
       setGapData(data.gaps || []);
     } catch (e) { console.error(e); }
@@ -245,11 +271,17 @@ export default function DashboardPage() {
   };
 
   const runAnswers = async () => {
-    const brand_id = sessionStorage.getItem("brand_id");
-    if (!brand_id) return;
+    if (!brand || queries.length === 0) return;
     setAnswersLoading(true); setAnswersError(null);
     try {
-      const res  = await fetch("/api/answers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id }) });
+      const res = await fetch("/api/answers", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brand_name:  brand.name,
+          competitors: competitors.map(c => c.name),
+          queries:     queries.map(q => ({ id: q.id, text: q.text, type: q.type, revenue_proximity: q.revenue_proximity })),
+        }),
+      });
       const data = await res.json();
       if (data.error && !data.answers) throw new Error(data.error);
       setAnswersData(data);
@@ -296,14 +328,19 @@ export default function DashboardPage() {
   };
 
   const runPlatformVisibility = async () => {
-    const brand_id = sessionStorage.getItem("brand_id");
-    if (!brand_id) return;
+    if (!brand) return;
     setPlatformLoading(true);
     setPlatformError(null);
     try {
       const res = await fetch("/api/visibility-platform", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brand_id }),
+        body: JSON.stringify({
+          brand_name:  brand.name,
+          industry:    brand.industry,
+          description: brand.description,
+          country:     (() => { try { const d = JSON.parse(localStorage.getItem("brandecho_analysis") || "{}"); return d.country || "India"; } catch { return "India"; } })(),
+          city:        (() => { try { const d = JSON.parse(localStorage.getItem("brandecho_analysis") || "{}"); return d.city || ""; } catch { return ""; } })(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");

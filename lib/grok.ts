@@ -174,7 +174,7 @@ export async function discoverPartB(brandName: string, domain?: string, geo?: { 
     },
     body: JSON.stringify({
       model:      CLAUDE_MODEL_FAST,
-      max_tokens: 8000,
+      max_tokens: 3000,
       system:     "You are a user research and AEO expert. Return ONLY valid JSON. No markdown.",
       messages: [{
         role: "user",
@@ -207,9 +207,8 @@ Return JSON:
     }
   ]
 }
-RULES: 3 personas (budget, mid, premium). 25 queries each (75 total). 1 citation per query. NEVER include brand name in queries.
-funnel_stage: TOFU=awareness (rev_prox 20-49), MOFU=consideration/comparison (50-79), BOFU=purchase (80-100).
-Min 8 TOFU, 8 MOFU, 8 BOFU per persona.`,
+RULES: 3 personas (budget, mid, premium). 5 queries each persona. EXACTLY 3 TOFU + 1 MOFU + 1 BOFU per persona. 1 citation per query. NEVER include brand name in query text.
+funnel_stage: TOFU=awareness(rev_prox 20-49), MOFU=consideration/comparison(50-79), BOFU=purchase(80-100).`,
       }],
     }),
     signal: AbortSignal.timeout(40000),
