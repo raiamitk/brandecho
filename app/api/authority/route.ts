@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Domain Authority — OpenPageRank API (free, 1000 req/month, no credit card)
@@ -8,11 +7,6 @@ import { createClient } from "@supabase/supabase-js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OPR_URL = "https://openpagerank.com/api/v1.0/getPageRank";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 function cleanDomain(d: string): string {
   return d.replace(/^https?:\/\//i, "").replace(/\/.*$/, "").toLowerCase().trim();
@@ -65,22 +59,15 @@ function prLabel(pr: number): { label: string; color: string; bg: string } {
 
 export async function POST(req: NextRequest) {
   try {
-    const { brand_id, domain } = await req.json();
+    const { domain, competitors: inlineCompetitors } = await req.json();
     if (!domain) return NextResponse.json({ error: "domain required" }, { status: 400 });
 
     const brandDomain = cleanDomain(domain);
 
-    // Load competitors from Supabase
-    let competitorDomains: { name: string; domain: string }[] = [];
-    if (brand_id) {
-      const { data } = await supabase
-        .from("competitors")
-        .select("name, domain")
-        .eq("brand_id", brand_id);
-      competitorDomains = (data || [])
-        .filter((c: { domain: string }) => c.domain)
-        .map((c: { name: string; domain: string }) => ({ name: c.name, domain: cleanDomain(c.domain) }));
-    }
+    // Use inline competitors passed from the client (no DB needed)
+    const competitorDomains: { name: string; domain: string }[] = (inlineCompetitors || [])
+      .filter((c: { domain?: string }) => c.domain)
+      .map((c: { name: string; domain: string }) => ({ name: c.name, domain: cleanDomain(c.domain) }));
 
     // All domains to check (brand + up to 5 competitors)
     const allDomains = [brandDomain, ...competitorDomains.slice(0, 5).map(c => c.domain)];

@@ -315,11 +315,10 @@ export default function DashboardPage() {
   };
 
   const runAuthorityCheck = async () => {
-    const brand_id = sessionStorage.getItem("brand_id");
-    if (!brand_id || !brand?.domain) return;
+    if (!brand?.domain) return;
     setAuthLoading(true); setAuthError(null);
     try {
-      const res  = await fetch("/api/authority", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand_id, domain: brand.domain }) });
+      const res  = await fetch("/api/authority", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain: brand.domain, competitors }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setAuthData(data);
