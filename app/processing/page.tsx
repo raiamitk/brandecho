@@ -86,7 +86,12 @@ export default function ProcessingPage() {
     try {
       const res = await fetch("/api/discover", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brand_name: name, domain }),
+        body: JSON.stringify({
+          brand_name: name,
+          domain,
+          country: sessionStorage.getItem("brand_country") || "India",
+          city:    sessionStorage.getItem("brand_city")    || "",
+        }),
       });
       if (!res.ok || !res.body) throw new Error(`Discovery API failed (${res.status})`);
 

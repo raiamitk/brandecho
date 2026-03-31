@@ -31,17 +31,26 @@ const TYPE_STYLE: Record<string, { bg: string; color: string }> = {
 };
 
 // ── Tab config ────────────────────────────────────────────────────────────────
-type TabId = "scan" | "visibility" | "briefs" | "gap" | "technical" | "answers";
+type TabId = "scan" | "platform" | "visibility" | "briefs" | "gap" | "technical" | "answers";
 const TABS: { id: TabId; label: string; Icon: React.ElementType; accentColor: string; desc: string }[] = [
   { id: "scan",       label: "AEO / GEO Scan",    Icon: Zap,       accentColor: A,         desc: "Personas, queries, competitors & smart recommendations from your brand scan" },
+  { id: "platform",   label: "AI Visibility",      Icon: Eye,       accentColor: "#00FF96", desc: "Per-platform AI visibility score, share of voice and sentiment across Gemini, Grok, Claude and ChatGPT" },
   { id: "answers",    label: "AI Answers",         Icon: Bot,       accentColor: "#06b6d4", desc: "See what AI assistants say when asked your target queries — brand & competitor mentions highlighted" },
-  { id: "visibility", label: "AI Visibility",      Icon: Eye,       accentColor: A,         desc: "Score every query for AI citability — Claude + Gemini + web authority signals" },
+  { id: "visibility", label: "Query Scores",       Icon: Eye,       accentColor: A,         desc: "Score every query for AI citability — Claude + Gemini + web authority signals" },
   { id: "briefs",     label: "Content Briefs",     Icon: Sparkles,  accentColor: "#fbbf24", desc: "AI-optimised content briefs for your top queries — ready to publish" },
   { id: "gap",        label: "Competitor Gap",     Icon: BarChart2, accentColor: "#f87171", desc: "Queries where competitors appear in AI answers but your brand doesn't" },
   { id: "technical",  label: "Technical Audit",    Icon: Gauge,     accentColor: "#818cf8", desc: "PageSpeed + Core Web Vitals for mobile & desktop — with AEO impact per metric" },
 ];
 
 // ── API response types ────────────────────────────────────────────────────────
+interface PlatformScore {
+  platform: string;
+  ai_visibility_score: number;
+  share_of_voice: number;
+  sentiment: "positive" | "neutral" | "negative";
+  reasoning: string;
+}
+
 interface VisScore {
   query_id: string; query_text: string; query_type: string;
   revenue_proximity: number; claude_score: number; web_score: number;
@@ -165,6 +174,12 @@ export default function DashboardPage() {
   const [authLoading,    setAuthLoading]    = useState(false);
   const [authError,      setAuthError]      = useState<string | null>(null);
 
+  // Platform visibility
+  const [platformScores,  setPlatformScores]  = useState<PlatformScore[]>([]);
+  const [platformLoading, setPlatformLoading] = useState(false);
+  const [platformError,   setPlatformError]   = useState<string | null>(null);
+  const [platformDone,    setPlatformDone]    = useState(false);
+
   // UI state
   const [expandedBrief,   setExpandedBrief]   = useState<string | null>(null);
   const [expandedQueryId, setExpandedQueryId] = useState<string | null>(null);
@@ -278,6 +293,27 @@ export default function DashboardPage() {
       setAuthData(data);
     } catch (e) { setAuthError(String(e)); }
     setAuthLoading(false);
+  };
+
+  const runPlatformVisibility = async () => {
+    const brand_id = sessionStorage.getItem("brand_id");
+    if (!brand_id) return;
+    setPlatformLoading(true);
+    setPlatformError(null);
+    try {
+      const res = await fetch("/api/visibility-platform", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brand_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setPlatformScores(data.scores || []);
+      setPlatformDone(true);
+    } catch (err) {
+      setPlatformError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setPlatformLoading(false);
+    }
   };
 
   // ── Copy brief ──────────────────────────────────────────────────────────────
@@ -659,6 +695,129 @@ export default function DashboardPage() {
       </button>
     </div>
   );
+
+  // PLATFORM VISIBILITY TAB ─────────────────────────────────────────────────
+  const PlatformTab = () => {
+    if (platformLoading) return (
+      <div style={{ textAlign: "center", padding: "72px 0" }}>
+        <Spinner />
+        <p style={{ color: T3, marginTop: 16, fontSize: 14 }}>Analysing across all AI platforms…</p>
+      </div>
+    );
+
+    if (!platformDone && !platformError) return (
+      <RunCTA
+        icon={Eye} accentColor="#00FF96"
+        title="Per-Platform AI Visibility"
+        desc="Estimate how well your brand appears on Gemini, Grok, Claude and ChatGPT — with share of voice and sentiment analysis."
+        label="Run Platform Visibility"
+        loading={platformLoading}
+        onClick={runPlatformVisibility}
+      />
+    );
+
+    if (platformError) return (
+      <div style={{ textAlign: "center", padding: "48px 0" }}>
+        <div style={{ fontSize: 14, color: "#dc2626", marginBottom: 16 }}>⚠️ {platformError}</div>
+        <button onClick={runPlatformVisibility}
+          style={{ background: A, color: "#111", fontWeight: 700, padding: "10px 28px",
+            borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13 }}>
+          Retry
+        </button>
+      </div>
+    );
+
+    const avgScore = platformScores.length
+      ? Math.round(platformScores.reduce((s, p) => s + p.ai_visibility_score, 0) / platformScores.length)
+      : 0;
+
+    const scoreColor  = (s: number) => s >= 70 ? "#15803d" : s >= 40 ? "#d97706" : "#dc2626";
+    const scoreBg     = (s: number) => s >= 70 ? "#dcfce7" : s >= 40 ? "#fef3c7" : "#fef2f2";
+
+    const sentimentColor = (s: string) =>
+      s === "positive" ? "#15803d" : s === "negative" ? "#dc2626" : "#d97706";
+    const sentimentBg = (s: string) =>
+      s === "positive" ? "#dcfce7" : s === "negative" ? "#fef2f2" : "#fef3c7";
+
+    const platformEmoji: Record<string, string> = {
+      Gemini: "🔵", Grok: "🤖", Claude: "🟣", ChatGPT: "🟢",
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <ReRunBar label="Re-run Platform Visibility" loading={platformLoading} accentColor="#00FF96"
+          onClick={() => { setPlatformDone(false); setPlatformScores([]); runPlatformVisibility(); }} />
+
+        {/* Overall average banner */}
+        <div style={{ background: scoreBg(avgScore), border: `1px solid ${scoreColor(avgScore)}40`,
+          borderRadius: 16, padding: "20px 28px", display: "flex", alignItems: "center", gap: 20 }}>
+          <div>
+            <div style={{ fontSize: 42, fontWeight: 900, color: scoreColor(avgScore), lineHeight: 1 }}>{avgScore}</div>
+            <div style={{ fontSize: 13, color: scoreColor(avgScore), fontWeight: 600, marginTop: 4 }}>Overall AI Visibility</div>
+          </div>
+          <div style={{ flex: 1, fontSize: 13, color: T2, lineHeight: 1.6 }}>
+            Average across {platformScores.length} AI platforms.{" "}
+            {avgScore >= 70 ? "Strong presence — your brand is frequently cited in AI answers."
+              : avgScore >= 40 ? "Moderate presence — room to grow citations and share of voice."
+              : "Low presence — significant opportunity to improve AI visibility."}
+          </div>
+        </div>
+
+        {/* Platform cards 2×2 grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16 }}>
+          {platformScores.map(p => (
+            <div key={p.platform} style={{ background: SURF, border: `1px solid ${BORD}`,
+              borderRadius: 18, padding: "22px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 22 }}>{platformEmoji[p.platform] || "🤖"}</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: T1 }}>{p.platform}</span>
+                <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "3px 10px",
+                  borderRadius: 99, background: sentimentBg(p.sentiment), color: sentimentColor(p.sentiment) }}>
+                  {p.sentiment}
+                </span>
+              </div>
+
+              {/* Big score */}
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+                <span style={{ fontSize: 48, fontWeight: 900, lineHeight: 1, color: scoreColor(p.ai_visibility_score) }}>
+                  {p.ai_visibility_score}
+                </span>
+                <span style={{ fontSize: 16, color: T3, marginBottom: 6 }}>/100</span>
+                <span style={{ marginLeft: 4, fontSize: 11, fontWeight: 700, padding: "3px 10px",
+                  borderRadius: 99, background: scoreBg(p.ai_visibility_score),
+                  color: scoreColor(p.ai_visibility_score), marginBottom: 6 }}>
+                  AI Visibility
+                </span>
+              </div>
+
+              {/* Share of Voice bar */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                    Share of Voice
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T1 }}>{p.share_of_voice}%</span>
+                </div>
+                <div style={{ height: 8, borderRadius: 99, background: BORD, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${p.share_of_voice}%`,
+                    background: scoreColor(p.share_of_voice), borderRadius: 99,
+                    transition: "width 0.6s ease" }} />
+                </div>
+              </div>
+
+              {/* Reasoning */}
+              <div style={{ fontSize: 12, color: T2, lineHeight: 1.6, background: BG,
+                border: `1px solid ${BORD}`, borderRadius: 10, padding: "10px 12px" }}>
+                {p.reasoning}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   // VISIBILITY TAB ───────────────────────────────────────────────────────────
   const VisibilityTab = () => {
@@ -1570,6 +1729,7 @@ export default function DashboardPage() {
       {/* Main content */}
       <main style={{ maxWidth: 1140, margin: "0 auto", padding: "36px 28px" }}>
         {tab === "scan"       && <ScanTab />}
+        {tab === "platform"   && <PlatformTab />}
         {tab === "answers"    && <AnswersTab />}
         {tab === "visibility" && <VisibilityTab />}
         {tab === "briefs"     && <BriefsTab />}

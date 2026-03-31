@@ -114,7 +114,8 @@ RULES:
 // ── PART A: Brand + Competitors + Recommendations (~5-8s, ~1400 tokens) ───────
 // Run in parallel with Part B so total time = max(A,B) not A+B.
 
-export async function discoverPartA(brandName: string, domain?: string) {
+export async function discoverPartA(brandName: string, domain?: string, geo?: { country: string; city?: string }) {
+  const geoCtx = geo?.city ? `${geo.city}, ${geo.country}` : (geo?.country || "India");
   const res = await fetch(CLAUDE_API_URL, {
     method: "POST",
     headers: {
@@ -128,7 +129,9 @@ export async function discoverPartA(brandName: string, domain?: string) {
       system:     "You are a brand intelligence expert. Return ONLY valid JSON. No markdown.",
       messages: [{
         role: "user",
-        content: `Analyse brand "${brandName}"${domain ? ` (website: ${domain})` : ""} and return:
+        content: `Analyse brand "${brandName}"${domain ? ` (website: ${domain})` : ""}
+Geo context: ${geoCtx}
+Return:
 {
   "brand": {
     "domain": "official domain",
@@ -161,7 +164,7 @@ RULES: 6 competitors (3 direct, 3 category_substitute). 4 recommendations.`,
 // ── PART B: Personas + Queries (~8-12s, ~2500 tokens) ────────────────────────
 // Runs in parallel with Part A — infers industry from brand name + domain itself.
 
-export async function discoverPartB(brandName: string, domain?: string) {
+export async function discoverPartB(brandName: string, domain?: string, geo?: { country: string; city?: string }) {
   const res = await fetch(CLAUDE_API_URL, {
     method: "POST",
     headers: {
@@ -171,11 +174,12 @@ export async function discoverPartB(brandName: string, domain?: string) {
     },
     body: JSON.stringify({
       model:      CLAUDE_MODEL_FAST,
-      max_tokens: 2500,
+      max_tokens: 8000,
       system:     "You are a user research and AEO expert. Return ONLY valid JSON. No markdown.",
       messages: [{
         role: "user",
         content: `For brand "${brandName}"${domain ? ` (website: ${domain})` : ""}, generate 3 diverse buyer personas with queries.
+Geo: ${geo?.city ? `${geo.city}, ` : ""}${geo?.country || "India"}
 Return JSON:
 {
   "personas": [
@@ -194,6 +198,7 @@ Return JSON:
           "type": "aeo|geo|seo_longtail",
           "intent": "awareness|consideration|comparison|purchase",
           "revenue_proximity": 75,
+          "funnel_stage": "TOFU|MOFU|BOFU",
           "citations": [
             {"source":"Site Name","url_pattern":"domain.com","type":"forum|review_site|comparison_site|news|expert_guide|video","why":"one sentence"}
           ]
@@ -202,7 +207,9 @@ Return JSON:
     }
   ]
 }
-RULES: 3 personas (budget, mid, premium income). 4 queries each. 1 citation per query. NEVER include "${brandName}" in any query text.`,
+RULES: 3 personas (budget, mid, premium). 25 queries each (75 total). 1 citation per query. NEVER include brand name in queries.
+funnel_stage: TOFU=awareness (rev_prox 20-49), MOFU=consideration/comparison (50-79), BOFU=purchase (80-100).
+Min 8 TOFU, 8 MOFU, 8 BOFU per persona.`,
       }],
     }),
     signal: AbortSignal.timeout(40000),
@@ -214,7 +221,7 @@ RULES: 3 personas (budget, mid, premium income). 4 queries each. 1 citation per 
     personas: {
       name: string; archetype: string; age_range: string; income_level: string;
       pain_points: string[]; goals: string[]; ai_tools_used: string[]; query_style: string;
-      queries: { text: string; type: string; intent: string; revenue_proximity: number; citations: object[] }[];
+      queries: { text: string; type: string; intent: string; revenue_proximity: number; funnel_stage: string; citations: object[] }[];
     }[];
   };
 }
@@ -436,6 +443,42 @@ gap_type guide:
 - missing: brand absent, competitors dominate — use for genuine gaps outside core strength
 
 Expected distribution for an established brand: ~30% strong, ~40% weak, ~30% missing. Avoid rating everything as missing — that is inaccurate for real brands.`
+  );
+  return JSON.parse(raw);
+}
+
+// ── Per-Platform AI Visibility ────────────────────────────────────────────────
+
+export async function scorePlatformVisibility(
+  brandName: string,
+  industry: string,
+  description?: string,
+  geo?: { country: string; city?: string }
+): Promise<{ platform: string; ai_visibility_score: number; share_of_voice: number; sentiment: "positive" | "neutral" | "negative"; reasoning: string }[]> {
+  const geoCtx = geo?.city ? `${geo.city}, ${geo.country}` : (geo?.country || "India");
+  const raw = await claudeChat(
+    "You are an AI visibility analyst. Return ONLY valid JSON. No markdown.",
+    `Brand: "${brandName}" | Industry: "${industry}"${description ? ` | ${description}` : ""} | Geo: ${geoCtx}
+
+Estimate how well "${brandName}" appears when users ask about its category on each AI platform.
+
+Return a JSON array for exactly these 4 platforms: Gemini, Grok, Claude, ChatGPT
+
+[
+  {
+    "platform": "Gemini",
+    "ai_visibility_score": 0-100,
+    "share_of_voice": 0-100,
+    "sentiment": "positive|neutral|negative",
+    "reasoning": "one sentence why"
+  }
+]
+
+Scoring guide:
+- ai_visibility_score: How often the brand appears in AI answers for its category (0=never, 100=always)
+- share_of_voice: % of category conversations where brand is mentioned vs competitors
+- sentiment: Overall tone when brand IS mentioned (positive=praised, neutral=just listed, negative=criticized)
+- Be realistic: established brands score 40-75, category leaders 65-85, niche brands 25-55`
   );
   return JSON.parse(raw);
 }

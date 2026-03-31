@@ -16,7 +16,8 @@ function sse(event: object): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { brand_name, domain } = await req.json();
+  const { brand_name, domain, country, city } = await req.json();
+  const geo = { country: country || "India", city: city || "" };
   if (!brand_name?.trim()) return new Response("Brand name required", { status: 400 });
 
   const supabase = createServiceClient();
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
         stepUpdate("queries",     "running", "Generating target queries...");
 
         const [partA, partB] = await Promise.all([
-          discoverPartA(brand_name, domain).then(result => {
+          discoverPartA(brand_name, domain, geo).then(result => {
             stepUpdate("brand",       "done", `Industry: ${result.brand.industry}`);
             stepUpdate("domain",      "done", `Domain: ${domain || result.brand.domain}`);
             stepUpdate("competitors", "done", `Found ${result.competitors.length} competitors`);
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
             send({ type: "data", key: "recs",        payload: result.recommendations });
             return result;
           }),
-          discoverPartB(brand_name, domain).then(result => {
+          discoverPartB(brand_name, domain, geo).then(result => {
             const allQueries = (result.personas || []).flatMap(p => p.queries || []);
             stepUpdate("personas", "done", `Created ${result.personas.length} personas`);
             stepUpdate("queries",  "done", `Generated ${allQueries.length} queries`);
@@ -155,6 +156,7 @@ export async function POST(req: NextRequest) {
                 brand_id: brand!.id, persona_id: p.id, text: q.text, type: q.type,
                 intent: q.intent, revenue_proximity: q.revenue_proximity,
                 citations: q.citations || [],
+                funnel_stage: q.funnel_stage || "MOFU",
               }))
             );
           }

@@ -91,6 +91,8 @@ export default function OnboardingPage() {
   const [isLoading,    setIsLoading]    = useState(false);
   const [error,        setError]        = useState("");
   const [savedBrands,  setSavedBrands]  = useState<SavedBrand[]>([]);
+  const [country,      setCountry]      = useState("India");
+  const [city,         setCity]         = useState("");
 
   useEffect(() => { setSavedBrands(loadSavedBrands().slice(0, 4)); }, []);
 
@@ -120,6 +122,8 @@ export default function OnboardingPage() {
     sessionStorage.setItem("brand_name",     brandName);
     sessionStorage.setItem("brand_domain",   normalised);
     sessionStorage.setItem("brand_hostname", hostname);
+    sessionStorage.setItem("brand_country", country);
+    sessionStorage.setItem("brand_city",    city);
     router.push("/processing");
   };
 
@@ -238,6 +242,27 @@ export default function OnboardingPage() {
               </span>
             </div>
           )}
+
+          {/* Geo selector */}
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <select
+              value={country}
+              onChange={e => setCountry(e.target.value)}
+              style={{ flex: 1, padding: "8px 12px", fontSize: 13, border: "1px solid #e5e7eb",
+                borderRadius: 10, background: "#fff", color: "#374151", cursor: "pointer" }}>
+              {["India","United States","United Kingdom","Australia","Canada","Singapore","UAE","Germany","France","Japan","Brazil","South Africa"].map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={city}
+              onChange={e => setCity(e.target.value)}
+              placeholder="City (optional)"
+              style={{ flex: 1, padding: "8px 12px", fontSize: 13, border: "1px solid #e5e7eb",
+                borderRadius: 10, outline: "none", color: "#374151" }}
+            />
+          </div>
 
           {error && (
             <p style={{ color: "#dc2626", fontSize: 13, marginTop: 8, paddingLeft: 4 }}>{error}</p>
