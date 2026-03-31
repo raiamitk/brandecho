@@ -30,15 +30,14 @@ const TYPE_STYLE: Record<string, { bg: string; color: string }> = {
 };
 
 // ── Tab config ────────────────────────────────────────────────────────────────
-type TabId = "scan" | "platform" | "visibility" | "briefs" | "gap" | "technical" | "answers";
+type TabId = "scan" | "platform" | "answers" | "visibility" | "briefs" | "technical";
 const TABS: { id: TabId; label: string; Icon: React.ElementType; accentColor: string; desc: string }[] = [
-  { id: "scan",       label: "AEO / GEO Scan",    Icon: Zap,       accentColor: A,         desc: "Personas, queries, competitors & smart recommendations from your brand scan" },
-  { id: "platform",   label: "AI Visibility",      Icon: Eye,       accentColor: "#00FF96", desc: "Per-platform AI visibility score, share of voice and sentiment across Gemini, Grok, Claude and ChatGPT" },
-  { id: "answers",    label: "AI Answers",         Icon: Bot,       accentColor: "#06b6d4", desc: "See what AI assistants say when asked your target queries — brand & competitor mentions highlighted" },
-  { id: "visibility", label: "Query Scores",       Icon: Eye,       accentColor: A,         desc: "Score every query for AI citability — Claude + Gemini + web authority signals" },
-  { id: "briefs",     label: "Content Briefs",     Icon: Sparkles,  accentColor: "#fbbf24", desc: "AI-optimised content briefs for your top queries — ready to publish" },
-  { id: "gap",        label: "Competitor Gap",     Icon: BarChart2, accentColor: "#f87171", desc: "Queries where competitors appear in AI answers but your brand doesn't" },
-  { id: "technical",  label: "Technical Audit",    Icon: Gauge,     accentColor: "#818cf8", desc: "PageSpeed + Core Web Vitals for mobile & desktop — with AEO impact per metric" },
+  { id: "scan",       label: "AEO / GEO Scan",     Icon: Zap,       accentColor: A,         desc: "Personas, queries, competitors & smart recommendations from your brand scan" },
+  { id: "platform",   label: "AI Visibility",       Icon: Eye,       accentColor: "#00FF96", desc: "Per-platform AI visibility score, share of voice and sentiment across Gemini, Grok, Claude and ChatGPT" },
+  { id: "answers",    label: "AI Answers & Gaps",   Icon: Bot,       accentColor: "#06b6d4", desc: "See what AI assistants say for your queries — brand & competitor mentions highlighted, with gap analysis" },
+  { id: "visibility", label: "Query Scores",        Icon: BarChart2, accentColor: A,         desc: "Per-platform citation scores (Gemini · Grok · Claude · ChatGPT) for all 15 queries" },
+  { id: "briefs",     label: "Content Briefs",      Icon: Sparkles,  accentColor: "#fbbf24", desc: "AI-optimised content briefs for your top queries — ready to publish" },
+  { id: "technical",  label: "Technical Audit",     Icon: Gauge,     accentColor: "#818cf8", desc: "PageSpeed + Core Web Vitals for mobile & desktop — with AEO impact per metric" },
 ];
 
 // ── API response types ────────────────────────────────────────────────────────
@@ -56,10 +55,12 @@ interface PlatformScore {
 
 interface VisScore {
   query_id: string; query_text: string; query_type: string;
-  revenue_proximity: number; claude_score: number; web_score: number;
-  gemini_check: boolean; gemini_available: boolean; combined_score: number; reason: string;
+  revenue_proximity: number;
+  claude_score: number; grok_score: number; gemini_score: number; chatgpt_score: number;
+  web_score: number; combined_score: number; reason: string;
+  live_mentioned: boolean; live_available: boolean; live_excerpt: string;
 }
-interface VisResult { overall_score: number; gemini_available: boolean; ai_check_source?: string; results: VisScore[]; }
+interface VisResult { overall_score: number; live_available: boolean; ai_check_source?: string; results: VisScore[]; }
 
 interface Brief {
   query_id: string; query_text: string; recommended_title: string;
@@ -181,6 +182,11 @@ export default function DashboardPage() {
   const [platformScores,  setPlatformScores]  = useState<PlatformScore[]>([]);
   const [platformLoading, setPlatformLoading] = useState(false);
   const [platformError,   setPlatformError]   = useState<string | null>(null);
+
+  // More queries
+  const [extraQueries,      setExtraQueries]      = useState<Query[]>([]);
+  const [moreQueriesLoading,setMoreQueriesLoading] = useState(false);
+  const [funnelFilter,      setFunnelFilter]      = useState<"ALL"|"TOFU"|"MOFU"|"BOFU">("ALL");
   const [platformDone,    setPlatformDone]    = useState(false);
 
   // UI state
@@ -291,6 +297,31 @@ export default function DashboardPage() {
       setAnswersData(data);
     } catch (e) { setAnswersError(String(e)); }
     setAnswersLoading(false);
+  };
+
+  const runMoreQueries = async () => {
+    if (!brand) return;
+    setMoreQueriesLoading(true);
+    try {
+      const stored = (() => { try { return JSON.parse(localStorage.getItem("brandecho_analysis") || "{}"); } catch { return {}; } })();
+      const res = await fetch("/api/more-queries", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brand_name: brand.name, industry: brand.industry,
+          existing_texts: [...queries, ...extraQueries].map(q => q.text),
+          funnel_filter: funnelFilter,
+          country: stored.country || "India", city: stored.city || "",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      const newQs = (data.queries || []).map((q: Record<string,unknown>, i: number) => ({
+        id: `extra_${Date.now()}_${i}`, brand_id: brand.id || "", persona_id: "",
+        created_at: new Date().toISOString(), citations: [], ...q,
+      })) as Query[];
+      setExtraQueries(prev => [...prev, ...newQs]);
+    } catch (e) { console.error(e); }
+    setMoreQueriesLoading(false);
   };
 
   const runPageSpeed = async () => {
@@ -441,11 +472,13 @@ export default function DashboardPage() {
       <h1>AI Visibility Report — ${brand?.name}</h1>
       <div class="sub">Overall Score: <strong>${visData.overall_score}/100</strong> &nbsp;·&nbsp; ${visData.results?.length || 0} queries scored &nbsp;·&nbsp; ${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}</div>
       <table>
-        <tr><th>Query</th><th>Claude</th><th>Gemini</th><th>Web</th><th>Combined</th></tr>
+        <tr><th>Query</th><th>Gemini</th><th>Grok</th><th>Claude</th><th>ChatGPT</th><th>Web</th><th>Combined</th></tr>
         ${(visData.results || []).map(s => `<tr>
           <td>${s.query_text}</td>
+          <td style="text-align:center">${s.gemini_score}</td>
+          <td style="text-align:center">${s.grok_score}</td>
           <td style="text-align:center">${s.claude_score}</td>
-          <td style="text-align:center">${s.gemini_available ? (s.gemini_check ? "✓ Cited" : "✗ Missing") : "—"}</td>
+          <td style="text-align:center">${s.chatgpt_score}</td>
           <td style="text-align:center">${s.web_score}</td>
           <td style="text-align:center;font-weight:700;color:${s.combined_score>=70?"#15803d":s.combined_score>=40?"#d97706":"#dc2626"}">${s.combined_score}</td>
         </tr>`).join("")}
@@ -739,6 +772,57 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      {/* Generate more queries */}
+      <section>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: T1, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+            <Zap style={{ width: 16, height: 16, color: A }} /> Generate More Queries
+          </h2>
+          {(["ALL","TOFU","MOFU","BOFU"] as const).map(f => (
+            <button key={f} onClick={() => setFunnelFilter(f)}
+              style={{ padding: "4px 14px", borderRadius: 99, fontSize: 12, fontWeight: 700, cursor: "pointer", border: "none",
+                background: funnelFilter === f ? (f === "ALL" ? A : f === "TOFU" ? "#dbeafe" : f === "MOFU" ? "#fef3c7" : "#dcfce7") : SURF,
+                color: funnelFilter === f ? (f === "ALL" ? "#111" : f === "TOFU" ? "#1d4ed8" : f === "MOFU" ? "#d97706" : "#15803d") : T3,
+              }}>
+              {f === "ALL" ? "All Funnel" : f}
+            </button>
+          ))}
+          <button onClick={runMoreQueries} disabled={moreQueriesLoading}
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6,
+              background: A, color: "#111", fontWeight: 700, padding: "8px 20px", borderRadius: 10,
+              border: "none", cursor: moreQueriesLoading ? "default" : "pointer", fontSize: 13,
+              opacity: moreQueriesLoading ? 0.7 : 1 }}>
+            {moreQueriesLoading ? "Generating…" : "+ Generate 10 More Queries"}
+          </button>
+        </div>
+        {extraQueries.length > 0 && (
+          <div style={{ border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 74px 80px 110px 160px",
+              padding: "10px 20px", background: "#f3f4f6",
+              fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              <span>Query</span><span>Type</span><span>Funnel</span><span>Intent</span><span>Stage</span>
+            </div>
+            {extraQueries.map((q, i) => {
+              const ts = TYPE_STYLE[q.type] || TYPE_STYLE.seo;
+              const fs = q.funnel_stage || "";
+              const fStyle = fs === "TOFU" ? { bg: "#dbeafe", color: "#1d4ed8" } : fs === "MOFU" ? { bg: "#fef3c7", color: "#d97706" } : fs === "BOFU" ? { bg: "#dcfce7", color: "#15803d" } : { bg: SURF, color: T3 };
+              const stage = q.revenue_proximity >= 80 ? { label: "Ready to Buy", color: "#15803d", bg: "#f0fdf4" } : q.revenue_proximity >= 60 ? { label: "Evaluating", color: "#1d4ed8", bg: "#eff6ff" } : q.revenue_proximity >= 40 ? { label: "Considering", color: "#d97706", bg: "#fffbeb" } : { label: "Researching", color: "#7c3aed", bg: "#f5f3ff" };
+              return (
+                <div key={q.id} style={{ display: "grid", gridTemplateColumns: "1fr 74px 80px 110px 160px",
+                  padding: "12px 20px", borderTop: `1px solid ${BORD}`, alignItems: "center",
+                  background: i % 2 === 1 ? "rgba(0,255,150,0.02)" : BG }}>
+                  <span style={{ fontSize: 13, color: T1 }}>{q.text}</span>
+                  <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 99, fontSize: 11, fontWeight: 600, background: ts.bg, color: ts.color }}>{q.type === "seo_longtail" ? "SEO" : q.type.toUpperCase()}</span>
+                  <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 99, fontSize: 11, fontWeight: 700, background: fStyle.bg, color: fStyle.color }}>{fs || "—"}</span>
+                  <span style={{ fontSize: 12, color: T2, textTransform: "capitalize" }}>{q.intent}</span>
+                  <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, background: stage.bg, color: stage.color }}>{stage.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* Download button */}
       <button onClick={downloadScanPDF}
         style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8,
@@ -798,6 +882,15 @@ export default function DashboardPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
         <ReRunBar label="Re-run Platform Visibility" loading={platformLoading} accentColor="#00FF96"
           onClick={() => { setPlatformDone(false); setPlatformScores([]); runPlatformVisibility(); }} />
+
+        {/* Formula explanation */}
+        <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 14, padding: "14px 20px", fontSize: 12, color: "#15803d", lineHeight: 1.8 }}>
+          <strong style={{ fontSize: 13 }}>📐 How scores are calculated</strong><br />
+          <strong>AI Visibility Score</strong> = estimated % of relevant queries where your brand appears in that platform&apos;s answers (0–100).<br />
+          <strong>Share of Voice</strong> = brand mentions ÷ total brand mentions across all competitors × 100. Formula:{" "}
+          <code style={{ background: "#dcfce7", padding: "1px 6px", borderRadius: 4 }}>SoV = (your_mentions / total_mentions) × 100</code><br />
+          Scores are estimated by Claude based on brand authority, web presence, and platform-specific signals.
+        </div>
 
         {/* KPI summary bar */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
@@ -940,12 +1033,14 @@ export default function DashboardPage() {
 
   // VISIBILITY TAB ───────────────────────────────────────────────────────────
   const VisibilityTab = () => {
+    const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
     if (!visData) return (
       <RunCTA
         icon={Eye} accentColor={A}
-        title="AI Visibility Checker"
-        desc="Score each query 0–100 for how likely AI engines are to cite your brand. Claude column = predicted citation score. Gemini/Claude column = live answer check (brand mentioned?). Web = authority signals."
-        label="Run Visibility Analysis"
+        title="Query Scores — All 4 Platforms"
+        desc="Score each query 0–100 for how likely each AI platform (Gemini, Grok, Claude, ChatGPT) is to cite your brand. Scores are estimated by Claude based on your brand, industry, and query type."
+        label="Run Query Score Analysis"
         loading={visLoading}
         onClick={runVisibility}
       />
@@ -953,17 +1048,32 @@ export default function DashboardPage() {
     const scores = visData.results || [];
     const strong = scores.filter(s => s.combined_score >= 70).length;
     const gaps   = scores.filter(s => s.combined_score < 40).length;
+    const avgPlatform = scores.length
+      ? Math.round(scores.reduce((s, r) => s + (r.claude_score + r.grok_score + r.gemini_score + r.chatgpt_score) / 4, 0) / scores.length)
+      : 0;
+
+    const ScoreBar = ({ score }: { score: number }) => (
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ flex: 1, height: 5, borderRadius: 99, background: BORD, overflow: "hidden" }}>
+          <div style={{ height: "100%", borderRadius: 99, width: `${score}%`,
+            background: score >= 70 ? A : score >= 40 ? "#fbbf24" : "#f87171" }} />
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 700, color: score >= 70 ? "#059669" : score >= 40 ? "#d97706" : "#dc2626", minWidth: 24 }}>{score}</span>
+      </div>
+    );
+
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-        <ReRunBar label="Re-run Visibility" loading={visLoading} accentColor={A}
+        <ReRunBar label="Re-run Query Scores" loading={visLoading} accentColor={A}
           onClick={() => { setVisData(null); runVisibility(); }} />
-        {/* Score cards */}
+
+        {/* KPI cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
           {[
-            { label: "Overall Score",    value: `${visData.overall_score}/100` },
-            { label: "Queries Scored",   value: scores.length },
-            { label: "Strong Visibility",value: strong },
-            { label: "Gap Queries",      value: gaps },
+            { label: "Overall Score",      value: `${visData.overall_score}/100` },
+            { label: "Avg Platform Score", value: `${avgPlatform}/100` },
+            { label: "Strong (≥70)",       value: strong },
+            { label: "Gap Queries (<40)",  value: gaps },
           ].map(({ label, value }) => (
             <div key={label} style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, padding: 20 }}>
               <div style={{ fontSize: 28, fontWeight: 800, color: T1, marginBottom: 4 }}>{value}</div>
@@ -972,7 +1082,15 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* AI check source badge */}
+        {/* Formula explanation */}
+        <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "12px 16px",
+          fontSize: 12, color: "#166534", lineHeight: 1.7 }}>
+          <strong>How scores are calculated:</strong> Claude estimates each platform&apos;s citation probability based on your brand, industry, and query type.
+          Combined = Avg(Gemini+Grok+Claude+ChatGPT) × 60% + Web Authority × 20% + Live Check × 20% (if available).
+          Scores are predictive, not live data — run AI Answers for live verification.
+        </div>
+
+        {/* Live check source */}
         {visData.ai_check_source && visData.ai_check_source !== "none" && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{
@@ -981,49 +1099,72 @@ export default function DashboardPage() {
               color:      visData.ai_check_source === "gemini" ? "#0369a1" : "#7e22ce",
               border:     `1px solid ${visData.ai_check_source === "gemini" ? "#bae6fd" : "#d8b4fe"}`,
             }}>
-              {visData.ai_check_source === "gemini" ? "⚡ Live check: Gemini" : "🤖 Live check: Claude (Gemini rate-limited)"}
+              {visData.ai_check_source === "gemini" ? "⚡ Live check: Gemini (top 5 queries)" : "🤖 Live check: Claude (top 5 queries)"}
             </span>
           </div>
         )}
 
-        {/* Scores table */}
+        {/* 4-platform scores table */}
         <div style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 110px 90px 130px",
-            padding: "10px 20px", background: "#f3f4f6",
-            fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          {/* Header */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 80px 80px 80px 80px 120px",
+            padding: "10px 16px", background: "#f3f4f6",
+            fontSize: 10, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px", gap: 8 }}>
             <span>Query</span>
-            <span title="Claude AI predicted citation probability">Claude</span>
-            <span title={visData.ai_check_source === "gemini" ? "Live Gemini answer check" : "Live Claude answer check"}>
-              {visData.ai_check_source === "gemini" ? "Gemini ⚡" : visData.ai_check_source === "claude" ? "Claude 🤖" : "AI Check"}
-            </span>
+            <span style={{ color: "#0369a1" }}>Gemini</span>
+            <span style={{ color: "#7c3aed" }}>Grok</span>
+            <span style={{ color: "#7e22ce" }}>Claude</span>
+            <span style={{ color: "#d97706" }}>ChatGPT</span>
             <span>Web</span>
             <span>Combined</span>
           </div>
-          {scores.map((s, i) => (
-            <div key={s.query_id} style={{ display: "grid", gridTemplateColumns: "1fr 90px 110px 90px 130px",
-              padding: "12px 20px", borderTop: `1px solid ${BORD}`, alignItems: "center",
-              background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : BG }}>
-              <span style={{ fontSize: 13, color: T1 }}>{s.query_text}</span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: T1 }}>{s.claude_score}/100</span>
-              <span>
-                {!s.gemini_available
-                  ? <span style={{ fontSize: 12, color: T3 }}>—</span>
-                  : s.gemini_check
-                    ? <span style={{ fontSize: 12, color: "#15803d", display: "flex", alignItems: "center", gap: 4 }}><CheckCircle style={{ width: 13, height: 13 }} /> Cited</span>
-                    : <span style={{ fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}><XCircle style={{ width: 13, height: 13 }} /> Missing</span>
-                }
-              </span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: T1 }}>{s.web_score}/100</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ flex: 1, height: 6, borderRadius: 99, background: BORD, overflow: "hidden" }}>
-                  <div style={{ height: "100%", borderRadius: 99,
-                    width: `${s.combined_score}%`,
-                    background: s.combined_score >= 70 ? A : s.combined_score >= 40 ? "#fbbf24" : "#f87171" }} />
-                </div>
-                <span style={{ fontSize: 12, fontWeight: 700, color: T1, minWidth: 28 }}>{s.combined_score}</span>
+          {scores.map((s, i) => {
+            const open = expandedRow === s.query_id;
+            return (
+              <div key={s.query_id} style={{ borderTop: `1px solid ${BORD}`, background: i % 2 === 1 ? "rgba(0,0,0,0.013)" : BG }}>
+                {/* Main row */}
+                <button onClick={() => setExpandedRow(open ? null : s.query_id)}
+                  style={{ width: "100%", display: "grid", gridTemplateColumns: "1fr 80px 80px 80px 80px 80px 120px",
+                    padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left",
+                    alignItems: "center", gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: T1, marginBottom: 2, lineHeight: 1.4 }}>{s.query_text}</div>
+                    <TypeBadge type={s.query_type} />
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: s.gemini_score >= 70 ? "#059669" : s.gemini_score >= 40 ? "#d97706" : "#dc2626" }}>{s.gemini_score}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: s.grok_score >= 70 ? "#059669" : s.grok_score >= 40 ? "#d97706" : "#dc2626" }}>{s.grok_score}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: s.claude_score >= 70 ? "#059669" : s.claude_score >= 40 ? "#d97706" : "#dc2626" }}>{s.claude_score}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: s.chatgpt_score >= 70 ? "#059669" : s.chatgpt_score >= 40 ? "#d97706" : "#dc2626" }}>{s.chatgpt_score}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: T2 }}>{s.web_score}</span>
+                  <ScoreBar score={s.combined_score} />
+                </button>
+
+                {/* Expanded: live check + reason */}
+                {open && (
+                  <div style={{ padding: "0 16px 14px", borderTop: `1px dashed ${BORD}` }}>
+                    {s.live_available && (
+                      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: T3 }}>Live check:</span>
+                        {s.live_mentioned
+                          ? <span style={{ fontSize: 12, fontWeight: 700, color: "#15803d", background: "#dcfce7", padding: "2px 10px", borderRadius: 99 }}>✓ Brand mentioned in AI answer</span>
+                          : <span style={{ fontSize: 12, fontWeight: 700, color: "#dc2626", background: "#fef2f2", padding: "2px 10px", borderRadius: 99 }}>✗ Brand absent from AI answer</span>}
+                      </div>
+                    )}
+                    {s.live_excerpt && (
+                      <div style={{ marginTop: 8, background: SURF, border: `1px solid ${BORD}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T2 }}>
+                        <strong style={{ color: T3, fontSize: 10, textTransform: "uppercase" }}>Excerpt: </strong>{s.live_excerpt}
+                      </div>
+                    )}
+                    {s.reason && (
+                      <div style={{ marginTop: 8, background: "#fafafa", border: `1px solid ${BORD}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T2, lineHeight: 1.5 }}>
+                        <strong style={{ color: T3, fontSize: 10, textTransform: "uppercase" }}>Why this score: </strong>{s.reason}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <button onClick={downloadVisibilityPDF}
@@ -1548,6 +1689,11 @@ export default function DashboardPage() {
   // ANSWERS TAB ─────────────────────────────────────────────────────────────
   const AnswersTab = () => {
     const [expandedAnswer, setExpandedAnswer] = useState<string | null>(null);
+    const GAP_COLOR: Record<string, { bg: string; color: string }> = {
+      missing: { bg: "#fef2f2", color: "#dc2626" },
+      weak:    { bg: "#fffbeb", color: "#d97706" },
+      strong:  { bg: "#f0fdf4", color: "#15803d" },
+    };
 
     // Highlight brand (green) and competitors (red) within answer text
     const HighlightedText = ({ text, brandName, competitorNames }: {
@@ -1578,11 +1724,11 @@ export default function DashboardPage() {
     if (!answersData && !answersError) return (
       <RunCTA
         icon={Bot} accentColor="#06b6d4"
-        title="AI Answer Preview"
-        desc="See what AI assistants say when someone asks your target queries. Brand mentions are highlighted green, competitors in red — so you can spot every gap instantly."
-        label="Run AI Answer Check"
-        loading={answersLoading}
-        onClick={runAnswers}
+        title="AI Answers & Competitor Gaps"
+        desc="See what AI assistants say for your target queries — brand mentions highlighted green, competitors in red. Competitor gap analysis runs in parallel to show which queries competitors dominate."
+        label="Run AI Answers + Gap Analysis"
+        loading={answersLoading || gapLoading}
+        onClick={() => { runAnswers(); runGap(); }}
       />
     );
 
@@ -1605,8 +1751,8 @@ export default function DashboardPage() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-        <ReRunBar label="Re-run AI Answers" loading={answersLoading} accentColor="#06b6d4"
-          onClick={() => { setAnswersData(null); setAnswersError(null); runAnswers(); }} />
+        <ReRunBar label="Re-run AI Answers + Gaps" loading={answersLoading || gapLoading} accentColor="#06b6d4"
+          onClick={() => { setAnswersData(null); setAnswersError(null); setGapData([]); runAnswers(); runGap(); }} />
 
         {/* Summary KPI chips */}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -1750,14 +1896,89 @@ export default function DashboardPage() {
           })}
         </div>
 
-        {/* Re-run button */}
-        <button onClick={runAnswers} disabled={answersLoading}
-          style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8,
-            background: "#06b6d4", color: "#fff", fontWeight: 700, padding: "11px 24px",
-            borderRadius: 10, border: "none", cursor: answersLoading ? "default" : "pointer",
-            fontSize: 13, opacity: answersLoading ? 0.7 : 1 }}>
-          {answersLoading ? "Running…" : "🔄 Re-run AI Answers"}
-        </button>
+        {/* ── Competitor Gap Analysis section ──────────────────────────── */}
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: "#fef2f220",
+                border: "1px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <TrendingUp style={{ width: 14, height: 14, color: "#dc2626" }} />
+              </div>
+              <span style={{ fontSize: 15, fontWeight: 700, color: T1 }}>Competitor Gap Analysis</span>
+            </div>
+            {gapData.length > 0 && (
+              <button onClick={() => { setGapData([]); runGap(); }} disabled={gapLoading}
+                style={{ fontSize: 12, fontWeight: 700, color: gapLoading ? T3 : "#dc2626",
+                  background: "none", border: `1px solid ${gapLoading ? BORD : "#fecaca"}`,
+                  borderRadius: 8, padding: "5px 14px", cursor: gapLoading ? "default" : "pointer" }}>
+                ↺ {gapLoading ? "Running…" : "Re-run Gaps"}
+              </button>
+            )}
+          </div>
+
+          {gapLoading && !gapData.length && (
+            <div style={{ textAlign: "center", padding: "24px 0" }}><Spinner /></div>
+          )}
+
+          {gapData.length > 0 && (() => {
+            const missingCount = gapData.filter(g => g.gap_type === "missing").length;
+            const weakCount    = gapData.filter(g => g.gap_type === "weak").length;
+            const strongCount  = gapData.filter(g => g.gap_type === "strong").length;
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Summary chips */}
+                <div style={{ display: "flex", gap: 10 }}>
+                  {[
+                    { label: "Critical Gaps",    value: missingCount, ...GAP_COLOR.missing },
+                    { label: "Weak Presence",    value: weakCount,    ...GAP_COLOR.weak    },
+                    { label: "Strong Positions", value: strongCount,  ...GAP_COLOR.strong  },
+                  ].map(({ label, value, bg, color }) => (
+                    <div key={label} style={{ background: bg, border: `1px solid ${color}40`, borderRadius: 12, padding: "10px 18px" }}>
+                      <div style={{ fontSize: 20, fontWeight: 800, color }}>{value}</div>
+                      <div style={{ fontSize: 11, color, fontWeight: 600 }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Gap table */}
+                <div style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 14, overflow: "hidden" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 160px 90px 1fr",
+                    padding: "8px 16px", background: "#f3f4f6",
+                    fontSize: 10, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <span>Query</span><span>Brand</span><span>Competitors Seen</span><span>Gap Type</span><span>Opportunity</span>
+                  </div>
+                  {gapData.map((g, i) => {
+                    const gs = GAP_COLOR[g.gap_type] || GAP_COLOR.strong;
+                    return (
+                      <div key={g.query_id} style={{ display: "grid", gridTemplateColumns: "1fr 70px 160px 90px 1fr",
+                        padding: "10px 16px", borderTop: `1px solid ${BORD}`, alignItems: "start",
+                        background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : BG }}>
+                        <div>
+                          <div style={{ fontSize: 12, color: T1, marginBottom: 2 }}>{g.query_text}</div>
+                          <TypeBadge type={g.query_type} />
+                        </div>
+                        <span style={{ fontSize: 16 }}>{g.brand_appears ? "✅" : "❌"}</span>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {g.competitors_appear.length
+                            ? g.competitors_appear.map((c, ci) => (
+                                <span key={ci} style={{ fontSize: 10, background: "#fef2f2", color: "#dc2626",
+                                  padding: "2px 7px", borderRadius: 99, fontWeight: 600 }}>{c}</span>
+                              ))
+                            : <span style={{ fontSize: 12, color: T3 }}>None</span>}
+                        </div>
+                        <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 99,
+                          fontSize: 10, fontWeight: 700, background: gs.bg, color: gs.color, whiteSpace: "nowrap" }}>
+                          {g.gap_type}
+                        </span>
+                        <span style={{ fontSize: 11, color: T2, lineHeight: 1.5 }}>{g.opportunity}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       </div>
     );
   };
@@ -1852,7 +2073,6 @@ export default function DashboardPage() {
         {tab === "answers"    && <AnswersTab />}
         {tab === "visibility" && <VisibilityTab />}
         {tab === "briefs"     && <BriefsTab />}
-        {tab === "gap"        && <GapTab />}
         {tab === "technical"  && <TechnicalTab />}
       </main>
     </div>
