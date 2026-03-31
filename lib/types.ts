@@ -39,6 +39,7 @@ export interface Query {
   type: "aeo" | "geo" | "seo_longtail";
   intent: "awareness" | "consideration" | "purchase" | "comparison";
   revenue_proximity: number; // 0-100: purchase cycle proximity (100 = ready to buy now)
+  funnel_stage?: "TOFU" | "MOFU" | "BOFU";
   citations: QueryCitation[]; // 3 sources AI engines cite for this query
   created_at: string;
 }

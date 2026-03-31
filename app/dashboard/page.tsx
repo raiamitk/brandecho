@@ -616,7 +616,7 @@ export default function DashboardPage() {
                     {q.type === "seo_longtail" ? "SEO" : q.type.toUpperCase()}
                   </span>
                   {(() => {
-                    const fs = (q as Record<string,unknown>).funnel_stage as string || "";
+                    const fs = q.funnel_stage || "";
                     const fStyle = fs === "TOFU" ? { bg: "#dbeafe", color: "#1d4ed8" }
                                  : fs === "MOFU" ? { bg: "#fef3c7", color: "#d97706" }
                                  : fs === "BOFU" ? { bg: "#dcfce7", color: "#15803d" }
