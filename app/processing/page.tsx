@@ -17,7 +17,7 @@ const INITIAL_STEPS: Step[] = [
   { id: "personas",    label: "Buyer personas",       detail: "3 customer archetypes",          status: "pending" },
   { id: "queries",     label: "Target queries",       detail: "AEO, GEO & SEO long-tail",       status: "pending" },
   { id: "recs",        label: "Recommendations",      detail: "Prioritised action plan",        status: "pending" },
-  { id: "save",        label: "Saving",               detail: "Storing in database",            status: "pending" },
+  { id: "save",        label: "Saving",               detail: "Storing analysis locally",       status: "pending" },
 ];
 
 // ── Live discovery data types ────────────────────────────────────────────────

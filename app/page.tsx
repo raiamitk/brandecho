@@ -45,7 +45,7 @@ const FEATURES = [
     color: A,
     title: "Brand Intelligence",
     tag: "Core — always included",
-    desc: "Auto-discovers your industry, 6 competitors, 3 buyer personas, and 12 targeted queries ranked by purchase intent.",
+    desc: "Auto-discovers your industry, 6 competitors, 3 buyer personas, and 15 targeted queries (TOFU/MOFU/BOFU) ranked by purchase intent.",
   },
   {
     Icon: Bot,

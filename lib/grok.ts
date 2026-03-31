@@ -174,7 +174,7 @@ export async function discoverPartB(brandName: string, domain?: string, geo?: { 
     },
     body: JSON.stringify({
       model:      CLAUDE_MODEL_FAST,
-      max_tokens: 3000,
+      max_tokens: 4500,
       system:     "You are a user research and AEO expert. Return ONLY valid JSON. No markdown.",
       messages: [{
         role: "user",
