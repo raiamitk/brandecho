@@ -41,6 +41,7 @@ const TABS: { id: TabId; label: string; Icon: React.ElementType; accentColor: st
 ];
 
 // ── API response types ────────────────────────────────────────────────────────
+interface ScoreSignal { score: number; note: string; }
 interface PlatformScore {
   platform: string;
   ai_visibility_score: number;
@@ -51,6 +52,17 @@ interface PlatformScore {
   avg_position: number;
   has_citations: boolean;
   insight: string;
+  score_breakdown?: {
+    brand_authority: ScoreSignal;
+    content_signals: ScoreSignal;
+    social_proof: ScoreSignal;
+    platform_affinity: ScoreSignal;
+  };
+  sov_formula?: {
+    brand_mentions: number;
+    total_competitor_mentions: number;
+    competitor_breakdown: string;
+  };
 }
 
 interface VisScore {
@@ -921,13 +933,19 @@ export default function DashboardPage() {
         <ReRunBar label="Re-run Platform Visibility" loading={platformLoading} accentColor="#00FF96"
           onClick={() => { setPlatformDone(false); setPlatformScores([]); runPlatformVisibility(); }} />
 
-        {/* Formula explanation */}
-        <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 14, padding: "14px 20px", fontSize: 12, color: "#15803d", lineHeight: 1.8 }}>
-          <strong style={{ fontSize: 13 }}>📐 How scores are calculated</strong><br />
-          <strong>AI Visibility Score</strong> = estimated % of relevant queries where your brand appears in that platform&apos;s answers (0–100).<br />
-          <strong>Share of Voice</strong> = brand mentions ÷ total brand mentions across all competitors × 100. Formula:{" "}
-          <code style={{ background: "#dcfce7", padding: "1px 6px", borderRadius: 4 }}>SoV = (your_mentions / total_mentions) × 100</code><br />
-          Scores are estimated by Claude based on brand authority, web presence, and platform-specific signals.
+        {/* Honest disclaimer */}
+        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 14, padding: "14px 20px", fontSize: 12, color: "#92400e", lineHeight: 1.8 }}>
+          <strong style={{ fontSize: 13 }}>⚠️ Predicted scores — not live data</strong><br />
+          BrandEcho does not have API access to Grok or ChatGPT. All scores are <strong>Claude&apos;s predictions</strong> based on known platform signals.
+          No live queries are run against Grok, ChatGPT, or Gemini — treat these as directional estimates, not measured facts.<br />
+          <strong>AI Visibility Score formula:</strong>{" "}
+          <code style={{ background: "#fef3c7", padding: "1px 6px", borderRadius: 4, fontFamily: "monospace" }}>
+            Brand Authority (/25) + Content Signals (/25) + Social Proof (/25) + Platform Affinity (/25) = Total /100
+          </code><br />
+          <strong>Share of Voice formula:</strong>{" "}
+          <code style={{ background: "#fef3c7", padding: "1px 6px", borderRadius: 4, fontFamily: "monospace" }}>
+            SoV = brand_mentions ÷ (brand_mentions + competitor_mentions) × 100
+          </code>
         </div>
 
         {/* KPI summary bar */}
@@ -1036,22 +1054,75 @@ export default function DashboardPage() {
 
                 {open && (
                   <div style={{ padding: "16px 24px", borderTop: `1px solid ${BORD}`,
-                    background: `${pColor}06`, display: "flex", flexDirection: "column", gap: 12 }}>
+                    background: `${pColor}06`, display: "flex", flexDirection: "column", gap: 14 }}>
+
+                    {/* Score breakdown formula */}
+                    {p.score_breakdown && (() => {
+                      const bd = p.score_breakdown;
+                      const signals = [
+                        { key: "Brand Authority",    s: bd.brand_authority },
+                        { key: "Content Signals",    s: bd.content_signals },
+                        { key: "Social Proof",       s: bd.social_proof },
+                        { key: "Platform Affinity",  s: bd.platform_affinity },
+                      ];
+                      const total = signals.reduce((sum, x) => sum + x.s.score, 0);
+                      return (
+                        <div style={{ background: BG, border: `1px solid ${BORD}`, borderRadius: 12, overflow: "hidden" }}>
+                          <div style={{ padding: "8px 14px", background: "#f3f4f6", fontSize: 10, fontWeight: 700,
+                            color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                            Score Breakdown — {signals.map(x => `${x.s.score}`).join(" + ")} = {total}/100
+                          </div>
+                          {signals.map(({ key, s }) => (
+                            <div key={key} style={{ padding: "10px 14px", borderTop: `1px solid ${BORD}`,
+                              display: "grid", gridTemplateColumns: "150px 48px 1fr", alignItems: "center", gap: 12 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: T1 }}>{key}</span>
+                              <span style={{ fontSize: 14, fontWeight: 800,
+                                color: s.score >= 20 ? "#15803d" : s.score >= 12 ? "#d97706" : "#dc2626" }}>
+                                {s.score}/25
+                              </span>
+                              <span style={{ fontSize: 11, color: T3, lineHeight: 1.5 }}>{s.note}</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
+                    {/* SoV formula */}
+                    {p.sov_formula && (
+                      <div style={{ background: BG, border: `1px solid ${BORD}`, borderRadius: 12, padding: "10px 14px" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: T3, textTransform: "uppercase",
+                          letterSpacing: "0.5px", marginBottom: 6 }}>Share of Voice Calculation</div>
+                        <code style={{ fontSize: 12, color: T1, display: "block", marginBottom: 4 }}>
+                          SoV = {p.sov_formula.brand_mentions} ÷ ({p.sov_formula.brand_mentions} + {p.sov_formula.total_competitor_mentions}) × 100 = {p.share_of_voice}%
+                        </code>
+                        {p.sov_formula.competitor_breakdown && (
+                          <div style={{ fontSize: 11, color: T3, marginTop: 4 }}>
+                            Competitors: {p.sov_formula.competitor_breakdown}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Reasoning */}
                     <div style={{ fontSize: 13, color: T2, lineHeight: 1.7 }}>
                       <strong style={{ color: T1 }}>Analysis: </strong>{p.reasoning}
                     </div>
+
+                    {/* Actionable insight */}
                     {p.insight && (
                       <div style={{ background: BG, border: `1px solid ${pColor}30`, borderLeft: `3px solid ${pColor}`,
                         borderRadius: 10, padding: "10px 14px", fontSize: 12, color: T2, lineHeight: 1.6 }}>
                         💡 <strong>Action: </strong>{p.insight}
                       </div>
                     )}
+
+                    {/* Quick stats */}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                       {[
-                        { label: "Brand Mentions (est.)", value: p.mentions != null ? `~${p.mentions} per query` : "Unknown" },
-                        { label: "Answer Position",       value: p.avg_position != null ? `#${p.avg_position} of 5` : "Unknown" },
-                        { label: "Citation Type",         value: p.has_citations ? "Linked citation" : "Name-drop only" },
-                        { label: "Sentiment",             value: p.sentiment?.charAt(0).toUpperCase() + p.sentiment?.slice(1) || "—" },
+                        { label: "Est. mentions / query", value: p.mentions != null ? `~${p.mentions}` : "—" },
+                        { label: "Answer position",        value: p.avg_position != null ? `#${p.avg_position} of 5` : "—" },
+                        { label: "Citation type",          value: p.has_citations ? "Linked citation" : "Name-drop only" },
+                        { label: "Sentiment",              value: p.sentiment ? p.sentiment.charAt(0).toUpperCase() + p.sentiment.slice(1) : "—" },
                       ].map(({ label, value }) => (
                         <div key={label} style={{ background: BG, border: `1px solid ${BORD}`, borderRadius: 10, padding: "10px 14px" }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>{label}</div>

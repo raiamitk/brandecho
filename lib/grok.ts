@@ -488,40 +488,76 @@ export async function scorePlatformVisibility(
   industry: string,
   description?: string,
   geo?: { country: string; city?: string }
-): Promise<{ platform: string; ai_visibility_score: number; share_of_voice: number; sentiment: "positive" | "neutral" | "negative"; reasoning: string; mentions: number; avg_position: number; has_citations: boolean; insight: string }[]> {
+): Promise<{
+  platform: string;
+  ai_visibility_score: number;
+  share_of_voice: number;
+  sentiment: "positive" | "neutral" | "negative";
+  reasoning: string;
+  mentions: number;
+  avg_position: number;
+  has_citations: boolean;
+  insight: string;
+  score_breakdown: {
+    brand_authority: { score: number; note: string };
+    content_signals: { score: number; note: string };
+    social_proof: { score: number; note: string };
+    platform_affinity: { score: number; note: string };
+  };
+  sov_formula: {
+    brand_mentions: number;
+    total_competitor_mentions: number;
+    competitor_breakdown: string;
+  };
+}[]> {
   const geoCtx = geo?.city ? `${geo.city}, ${geo.country}` : (geo?.country || "India");
   const raw = await claudeChat(
-    "You are an AI visibility analyst. Return ONLY valid JSON. No markdown.",
+    "You are an AI visibility analyst. Return ONLY valid JSON. No markdown. Be honest and precise — these scores will be shown to users with full formula breakdowns.",
     `Brand: "${brandName}" | Industry: "${industry}"${description ? ` | ${description}` : ""} | Geo: ${geoCtx}
 
-Estimate how well "${brandName}" appears when users ask about its category on each AI platform.
+IMPORTANT: You do NOT have live access to Grok, ChatGPT, or Gemini. You are estimating scores based on known signals. Be transparent and realistic.
+
+Score each platform using EXACTLY these 4 signals (each 0–25, total = ai_visibility_score):
+1. brand_authority (0-25): How established is the brand? Domain age, press mentions, Wikipedia presence, industry recognition.
+2. content_signals (0-25): Quality of brand's content for AI training — structured pages, FAQ, guides, schema markup, blog depth.
+3. social_proof (0-25): User-generated evidence — reviews, forum discussions, Reddit mentions, G2/Trustpilot presence.
+4. platform_affinity (0-25): Platform-specific bias — Grok weights Twitter/X activity; Gemini weights Google-indexed content; ChatGPT weights training data density & Wikipedia; Claude weights structured documentation.
+
+For share_of_voice: estimate brand_mentions and total_competitor_mentions separately so the formula is visible.
+SoV = brand_mentions / (brand_mentions + total_competitor_mentions) × 100
 
 Return a JSON array for exactly these 4 platforms in this order: Gemini, Grok, Claude, ChatGPT
 
 [
   {
     "platform": "Gemini",
-    "ai_visibility_score": 0-100,
-    "share_of_voice": 0-100,
-    "sentiment": "positive|neutral|negative",
-    "reasoning": "2-sentence explanation of why this score — mention specific factors like brand authority, content quality, competitor strength",
-    "mentions": 2,
-    "avg_position": 3,
-    "has_citations": true,
-    "insight": "one specific actionable thing the brand should do to improve on this platform"
+    "score_breakdown": {
+      "brand_authority": { "score": 12, "note": "one sentence — specific reason for this sub-score" },
+      "content_signals":  { "score": 10, "note": "one sentence" },
+      "social_proof":     { "score": 8,  "note": "one sentence" },
+      "platform_affinity":{ "score": 7,  "note": "Gemini-specific reason" }
+    },
+    "ai_visibility_score": 37,
+    "sov_formula": {
+      "brand_mentions": 1,
+      "total_competitor_mentions": 8,
+      "competitor_breakdown": "e.g. CompetitorA(3) + CompetitorB(3) + CompetitorC(2)"
+    },
+    "share_of_voice": 11,
+    "sentiment": "neutral",
+    "reasoning": "2-sentence explanation referencing the specific sub-scores",
+    "mentions": 1,
+    "avg_position": 4,
+    "has_citations": false,
+    "insight": "one specific actionable improvement for this platform"
   }
 ]
 
-Field guide:
-- ai_visibility_score: How often the brand appears in AI answers for its category (0=never, 100=always)
-- share_of_voice: % of category conversations where brand is mentioned vs competitors (0-100)
-- sentiment: Overall tone when brand IS mentioned (positive=praised, neutral=just listed, negative=criticized)
-- mentions: Estimated average number of times brand is mentioned per relevant AI answer (0-5)
-- avg_position: Where in the answer the brand typically appears (1=first, 5=last or buried)
-- has_citations: true if the platform tends to link/cite the brand's website, false if just name-drop
-- insight: One specific, actionable recommendation to improve visibility on THIS platform
-- Be realistic: established brands 40-75, category leaders 65-85, niche brands 25-55
-- Vary scores meaningfully across platforms — each platform has different training data and citation patterns`
+RULES:
+- ai_visibility_score MUST equal brand_authority.score + content_signals.score + social_proof.score + platform_affinity.score
+- share_of_voice MUST equal round(brand_mentions / (brand_mentions + total_competitor_mentions) × 100)
+- Be realistic: niche/small brands 15-40, established brands 35-60, category leaders 55-80
+- Vary scores across platforms — each has genuinely different signals`
   );
   return JSON.parse(raw);
 }
