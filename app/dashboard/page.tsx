@@ -30,10 +30,9 @@ const TYPE_STYLE: Record<string, { bg: string; color: string }> = {
 };
 
 // ── Tab config ────────────────────────────────────────────────────────────────
-type TabId = "scan" | "platform" | "answers" | "visibility" | "briefs" | "technical";
+type TabId = "scan" | "answers" | "visibility" | "briefs" | "technical";
 const TABS: { id: TabId; label: string; Icon: React.ElementType; accentColor: string; desc: string }[] = [
   { id: "scan",       label: "AEO / GEO Scan",     Icon: Zap,       accentColor: A,         desc: "Personas, queries, competitors & smart recommendations from your brand scan" },
-  { id: "platform",   label: "AI Visibility",       Icon: Eye,       accentColor: "#00FF96", desc: "Per-platform AI visibility score, share of voice and sentiment across Gemini, Grok, Claude and ChatGPT" },
   { id: "answers",    label: "AI Answers & Gaps",   Icon: Bot,       accentColor: "#06b6d4", desc: "See what AI assistants say for your queries — brand & competitor mentions highlighted, with gap analysis" },
   { id: "visibility", label: "Query Scores",        Icon: BarChart2, accentColor: A,         desc: "Per-platform citation scores (Gemini · Grok · Claude · ChatGPT) for all 15 queries" },
   { id: "briefs",     label: "Content Briefs",      Icon: Sparkles,  accentColor: "#fbbf24", desc: "AI-optimised content briefs for your top queries — ready to publish" },
@@ -693,6 +692,14 @@ export default function DashboardPage() {
           )}
         </div>
       )}
+
+      {/* AI Visibility Stats (Platform Tab merged here) */}
+      <section>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: T1, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <Eye style={{ width: 16, height: 16, color: A }} /> AI Visibility
+        </h2>
+        <PlatformTab />
+      </section>
 
       {/* KPIs */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
@@ -2292,7 +2299,6 @@ export default function DashboardPage() {
       {/* Main content */}
       <main style={{ maxWidth: 1140, margin: "0 auto", padding: "36px 28px" }}>
         {tab === "scan"       && <ScanTab />}
-        {tab === "platform"   && <PlatformTab />}
         {tab === "answers"    && <AnswersTab />}
         {tab === "visibility" && <VisibilityTab />}
         {tab === "briefs"     && <BriefsTab />}
