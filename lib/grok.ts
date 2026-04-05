@@ -111,8 +111,9 @@ RULES:
   return JSON.parse(text);
 }
 
-// ── PART A: Brand + Competitors + Recommendations (~5-8s, ~1400 tokens) ───────
-// Run in parallel with Part B so total time = max(A,B) not A+B.
+// ── PART A: Brand + Competitors + Recommendations ────────────────────────────
+// Uses Sonnet (not Haiku) — accuracy matters more than speed here since all
+// downstream analysis depends on getting the brand identity right.
 
 export async function discoverPartA(brandName: string, domain?: string, geo?: { country: string; city?: string }) {
   const geoCtx = geo?.city ? `${geo.city}, ${geo.country}` : (geo?.country || "India");
@@ -124,32 +125,36 @@ export async function discoverPartA(brandName: string, domain?: string, geo?: { 
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model:      CLAUDE_MODEL_FAST,
-      max_tokens: 1400,
-      system:     "You are a brand intelligence expert. Return ONLY valid JSON. No markdown.",
+      model:      CLAUDE_MODEL,   // Sonnet — accuracy critical for brand identity
+      max_tokens: 1800,
+      system:     "You are a precise brand intelligence expert. Return ONLY valid JSON. No markdown. If you are not certain what a brand does, reason carefully from its domain name, any context clues, and what the name literally implies — do NOT default to a generic well-known category.",
       messages: [{
         role: "user",
-        content: `Analyse brand "${brandName}"${domain ? ` (website: ${domain})` : ""}
-Searcher location: ${geoCtx} — IMPORTANT: if the brand is global/international, list its REAL global competitors regardless of searcher location. Only use local competitors if the brand exclusively serves that local market.
+        content: `Analyse brand "${brandName}"${domain ? ` (website: ${domain})` : ""}.
+
+CRITICAL: Base your analysis on what this specific brand ACTUALLY does. Read the domain carefully — e.g. "socialmediacheck.com" is a background check / social media screening service, NOT a social media analytics tool. Do not conflate it with well-known SaaS tools.
+
+Searcher location: ${geoCtx} — if the brand is global/international, list its REAL global competitors. Only use local competitors if the brand exclusively serves that local market.
+
 Return:
 {
   "brand": {
     "domain": "official domain",
-    "industry": "specific industry (e.g. Quick Commerce, Online Brokerage)",
-    "description": "2-sentence brand description covering what it does and who it serves",
+    "industry": "precise industry niche (e.g. Social Media Background Checks, UK DBS Checks, Online Brokerage)",
+    "description": "2-sentence description of what the brand SPECIFICALLY does and who its customers are — be accurate, not generic",
     "brand_tone": "professional|casual|luxury|budget"
   },
   "competitors": [
-    {"name":"","domain":"","type":"direct|category_substitute","why":"one sentence"}
+    {"name":"","domain":"","type":"direct|category_substitute","why":"one sentence explaining overlap"}
   ],
   "recommendations": [
     {"title":"","description":"2 sentences","category":"aeo|seo|content|technical","priority":"high|medium|low","projected_lift":"+20%","action_label":"button text"}
   ]
 }
-RULES: 6 competitors (3 direct, 3 category_substitute). 4 recommendations.`,
+RULES: 6 competitors (3 direct, 3 category_substitute). 4 recommendations tailored to the brand's actual industry.`,
       }],
     }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(45000),
   });
   if (!res.ok) { const err = await res.text(); throw new Error(`Claude Part A error ${res.status}: ${err}`); }
   const data = await res.json();
@@ -161,8 +166,9 @@ RULES: 6 competitors (3 direct, 3 category_substitute). 4 recommendations.`,
   };
 }
 
-// ── PART B: Personas + Queries (~8-12s, ~2500 tokens) ────────────────────────
-// Runs in parallel with Part A — infers industry from brand name + domain itself.
+// ── PART B: Personas + Queries ───────────────────────────────────────────────
+// Uses Sonnet for accuracy — query relevance depends on correctly identifying
+// what the brand does and who its real users are.
 
 export async function discoverPartB(brandName: string, domain?: string, geo?: { country: string; city?: string }) {
   const res = await fetch(CLAUDE_API_URL, {
@@ -173,9 +179,9 @@ export async function discoverPartB(brandName: string, domain?: string, geo?: { 
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model:      CLAUDE_MODEL_FAST,
-      max_tokens: 2800,
-      system:     "You are a user research and AEO expert. Return ONLY valid JSON. No markdown.",
+      model:      CLAUDE_MODEL,   // Sonnet — query accuracy depends on correct brand understanding
+      max_tokens: 3000,
+      system:     "You are a user research and AEO expert. Return ONLY valid JSON. No markdown. Reason carefully about what the brand actually does before generating personas and queries.",
       messages: [{
         role: "user",
         content: `For brand "${brandName}"${domain ? ` (website: ${domain})` : ""}, generate 3 buyer personas with queries.
@@ -205,7 +211,7 @@ Return JSON:
 RULES: 3 personas (budget/mid/premium). Each has EXACTLY 5 queries: 3 TOFU + 1 MOFU + 1 BOFU. NO brand name in query text. TOFU rev_prox 20-49, MOFU 50-79, BOFU 80-100. Use "aeo" or "geo" types only.`,
       }],
     }),
-    signal: AbortSignal.timeout(50000),
+    signal: AbortSignal.timeout(55000),
   });
   if (!res.ok) { const err = await res.text(); throw new Error(`Claude Part B error ${res.status}: ${err}`); }
   const data = await res.json();
