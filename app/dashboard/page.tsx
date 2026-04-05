@@ -43,6 +43,7 @@ const TABS: { id: TabId; label: string; Icon: React.ElementType; accentColor: st
 // ── API response types ────────────────────────────────────────────────────────
 interface ScoreSignal { score: number; note: string; }
 interface PlatformScore {
+  // kept for estimated "Online Score" card
   platform: string;
   ai_visibility_score: number;
   share_of_voice: number;
@@ -63,6 +64,23 @@ interface PlatformScore {
     total_competitor_mentions: number;
     competitor_breakdown: string;
   };
+}
+
+interface VisibilityLog {
+  query_id: string; query_text: string; answer: string;
+  brand_mentioned: boolean; brand_mention_count: number;
+  competitor_mentions: Record<string, number>;
+}
+interface RealPlatformResult {
+  platform: string; available: boolean; reason: string;
+  logs: VisibilityLog[];
+  appeared_count: number; total_queries: number; visibility_pct: number;
+  total_brand_mentions: number; total_competitor_mentions: number;
+  competitor_totals: Record<string, number>; sov_pct: number;
+}
+interface RealVisibilityData {
+  brand_name: string; platforms: RealPlatformResult[];
+  avg_visibility_pct: number; avg_sov_pct: number;
 }
 
 interface VisScore {
@@ -190,16 +208,25 @@ export default function DashboardPage() {
   const [authLoading,    setAuthLoading]    = useState(false);
   const [authError,      setAuthError]      = useState<string | null>(null);
 
-  // Platform visibility
+  // Platform visibility (estimated "Online Score")
   const [platformScores,  setPlatformScores]  = useState<PlatformScore[]>([]);
   const [platformLoading, setPlatformLoading] = useState(false);
   const [platformError,   setPlatformError]   = useState<string | null>(null);
+  const [platformDone,    setPlatformDone]    = useState(false);
+
+  // Real AI visibility (actual queries → actual answers → real mention counts)
+  const [realVisData,    setRealVisData]    = useState<RealVisibilityData | null>(null);
+  const [realVisLoading, setRealVisLoading] = useState(false);
+  const [realVisError,   setRealVisError]   = useState<string | null>(null);
 
   // More queries
   const [extraQueries,      setExtraQueries]      = useState<Query[]>([]);
   const [moreQueriesLoading,setMoreQueriesLoading] = useState(false);
   const [funnelFilter,      setFunnelFilter]      = useState<"ALL"|"TOFU"|"MOFU"|"BOFU">("ALL");
-  const [platformDone,    setPlatformDone]    = useState(false);
+
+  // Competitor management
+  const [newCompetitorInput, setNewCompetitorInput] = useState("");
+  const [showAddCompetitor,  setShowAddCompetitor]  = useState(false);
 
   // UI state
   const [expandedBrief,   setExpandedBrief]   = useState<string | null>(null);
@@ -311,6 +338,61 @@ export default function DashboardPage() {
     setAnswersLoading(false);
   };
 
+  const runRealVisibility = async () => {
+    if (!brand || queries.length === 0) return;
+    setRealVisLoading(true); setRealVisError(null);
+    try {
+      const res = await fetch("/api/ai-visibility-real", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brand_name:  brand.name,
+          competitors: competitors.map(c => c.name),
+          queries:     queries.map(q => ({ id: q.id, text: q.text })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setRealVisData(data);
+    } catch (e) { setRealVisError(e instanceof Error ? e.message : "Unknown error"); }
+    setRealVisLoading(false);
+  };
+
+  const addCompetitor = () => {
+    if (!newCompetitorInput.trim() || !brand) return;
+    const newC: Competitor = {
+      id: `c_manual_${Date.now()}`, brand_id: brand.id || "",
+      name: newCompetitorInput.trim(),
+      domain: newCompetitorInput.trim().toLowerCase().replace(/\s+/g, "") + ".com",
+      type: "direct", aeo_score: 0, seo_score: 0,
+      created_at: new Date().toISOString(),
+    };
+    const updated = [...competitors, newC];
+    setCompetitors(updated);
+    try {
+      const raw = localStorage.getItem("brandecho_analysis");
+      if (raw) { const d = JSON.parse(raw); d.competitors = updated.map(c => ({ name: c.name, domain: c.domain, type: c.type, why: "" })); localStorage.setItem("brandecho_analysis", JSON.stringify(d)); }
+    } catch { /* ignore */ }
+    setNewCompetitorInput(""); setShowAddCompetitor(false);
+  };
+
+  const deleteCompetitor = (id: string) => {
+    const updated = competitors.filter(c => c.id !== id);
+    setCompetitors(updated);
+    try {
+      const raw = localStorage.getItem("brandecho_analysis");
+      if (raw) { const d = JSON.parse(raw); d.competitors = updated.map(c => ({ name: c.name, domain: c.domain, type: c.type, why: "" })); localStorage.setItem("brandecho_analysis", JSON.stringify(d)); }
+    } catch { /* ignore */ }
+  };
+
+  const deleteQuery = (id: string) => {
+    const updated = queries.filter(q => q.id !== id);
+    setQueries(updated);
+    try {
+      const raw = localStorage.getItem("brandecho_analysis");
+      if (raw) { const d = JSON.parse(raw); d.queries = updated; localStorage.setItem("brandecho_analysis", JSON.stringify(d)); }
+    } catch { /* ignore */ }
+  };
+
   const runMoreQueries = async () => {
     if (!brand) return;
     setMoreQueriesLoading(true);
@@ -375,23 +457,27 @@ export default function DashboardPage() {
 
   const runPlatformVisibility = async () => {
     if (!brand) return;
-    setPlatformLoading(true);
-    setPlatformError(null);
+    // Run both real queries and estimated online score in parallel
+    setPlatformLoading(true); setPlatformError(null);
+    const geo = (() => { try { const d = JSON.parse(localStorage.getItem("brandecho_analysis") || "{}"); return { country: d.country || "India", city: d.city || "" }; } catch { return { country: "India", city: "" }; } })();
     try {
-      const res = await fetch("/api/visibility-platform", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          brand_name:  brand.name,
-          industry:    brand.industry,
-          description: brand.description,
-          country:     (() => { try { const d = JSON.parse(localStorage.getItem("brandecho_analysis") || "{}"); return d.country || "India"; } catch { return "India"; } })(),
-          city:        (() => { try { const d = JSON.parse(localStorage.getItem("brandecho_analysis") || "{}"); return d.city || ""; } catch { return ""; } })(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      setPlatformScores(data.scores || []);
-      setPlatformDone(true);
+      await Promise.all([
+        // Real visibility: actually query platforms
+        (async () => {
+          if (queries.length > 0) await runRealVisibility();
+        })(),
+        // Estimated online score
+        (async () => {
+          try {
+            const res = await fetch("/api/visibility-platform", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ brand_name: brand.name, industry: brand.industry, description: brand.description, country: geo.country, city: geo.city }),
+            });
+            const data = await res.json();
+            if (res.ok) { setPlatformScores(data.scores || []); setPlatformDone(true); }
+          } catch { /* non-fatal */ }
+        })(),
+      ]);
     } catch (err) {
       setPlatformError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -666,10 +752,10 @@ export default function DashboardPage() {
         </p>
         <div style={{ border: `1px solid ${BORD}`, borderRadius: 16, overflow: "hidden" }}>
           {/* Table header */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 74px 80px 110px 160px 20px",
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 74px 80px 110px 160px 32px 20px",
             padding: "10px 20px", background: "#f3f4f6",
             fontSize: 11, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            <span>Query</span><span>Type</span><span>Funnel</span><span>Intent</span><span>Purchase Stage</span><span />
+            <span>Query</span><span>Type</span><span>Funnel</span><span>Intent</span><span>Purchase Stage</span><span /><span />
           </div>
           {queries.map((q, i) => {
             const ts    = TYPE_STYLE[q.type] || TYPE_STYLE.seo;
@@ -689,7 +775,7 @@ export default function DashboardPage() {
               <div key={q.id} style={{ borderTop: `1px solid ${BORD}`, background: open ? "#fafffe" : i % 2 === 1 ? "rgba(0,0,0,0.012)" : BG }}>
                 {/* Main row — clickable */}
                 <button onClick={() => setExpandedQueryId(open ? null : q.id)}
-                  style={{ width: "100%", display: "grid", gridTemplateColumns: "1fr 74px 80px 110px 160px 20px",
+                  style={{ width: "100%", display: "grid", gridTemplateColumns: "1fr 74px 80px 110px 160px 32px 20px",
                     padding: "13px 20px", alignItems: "center", background: "none", border: "none",
                     cursor: "pointer", textAlign: "left", gap: 0 }}>
                   <span style={{ fontSize: 13, color: T1, paddingRight: 16 }}>{q.text}</span>
@@ -720,6 +806,11 @@ export default function DashboardPage() {
                       {stage.label}
                     </span>
                   </div>
+                  <button onClick={e => { e.stopPropagation(); deleteQuery(q.id); }}
+                    title="Remove query"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: T3, fontSize: 15, lineHeight: 1, padding: "2px 4px", borderRadius: 4 }}>
+                    ×
+                  </button>
                   {open
                     ? <ChevronUp  style={{ width: 14, height: 14, color: T3 }} />
                     : <ChevronDown style={{ width: 14, height: 14, color: T3 }} />}
@@ -767,20 +858,51 @@ export default function DashboardPage() {
 
       {/* Competitors */}
       <section>
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: T1, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-          <Building2 style={{ width: 16, height: 16, color: A }} /> Competitors
-        </h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: T1, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+            <Building2 style={{ width: 16, height: 16, color: A }} /> Competitors
+          </h2>
+          <button onClick={() => setShowAddCompetitor(v => !v)}
+            style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: A,
+              background: "none", border: `1px solid ${A}`, borderRadius: 8, padding: "5px 12px", cursor: "pointer" }}>
+            + Add Competitor
+          </button>
+        </div>
+        {showAddCompetitor && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <input
+              value={newCompetitorInput}
+              onChange={e => setNewCompetitorInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addCompetitor()}
+              placeholder="Competitor name (e.g. Hootsuite)"
+              style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: `1px solid ${BORD}`, fontSize: 13, outline: "none" }}
+            />
+            <button onClick={addCompetitor}
+              style={{ background: A, color: "#111", fontWeight: 700, padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13 }}>
+              Add
+            </button>
+            <button onClick={() => { setShowAddCompetitor(false); setNewCompetitorInput(""); }}
+              style={{ background: SURF, color: T3, fontWeight: 600, padding: "8px 14px", borderRadius: 8, border: `1px solid ${BORD}`, cursor: "pointer", fontSize: 13 }}>
+              Cancel
+            </button>
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
           {competitors.map(c => (
             <div key={c.id} style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 14, padding: 16, display: "flex", alignItems: "center", gap: 12 }}>
               <Globe style={{ width: 16, height: 16, color: A, flexShrink: 0 }} />
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: T1 }}>{c.name}</div>
                 <div style={{ fontSize: 12, color: T3 }}>{c.domain}</div>
                 <div style={{ fontSize: 11, marginTop: 2, color: c.type === "direct" ? "#fb923c" : "#a78bfa" }}>
                   {c.type === "direct" ? "Direct Competitor" : "Category Substitute"}
                 </div>
               </div>
+              <button onClick={() => deleteCompetitor(c.id)}
+                title="Remove competitor"
+                style={{ background: "none", border: "none", cursor: "pointer", color: T3, fontSize: 16, lineHeight: 1, padding: 4, flexShrink: 0 }}>
+                ×
+              </button>
             </div>
           ))}
         </div>
@@ -886,251 +1008,243 @@ export default function DashboardPage() {
   // PLATFORM VISIBILITY TAB ─────────────────────────────────────────────────
   const PlatformTab = () => {
     const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
+    const [expandedLog,      setExpandedLog]      = useState<string | null>(null);
 
-    if (platformLoading) return (
+    // Highlight brand (green) and competitors (red) in any text
+    const highlight = (text: string) => {
+      if (!text || !brand) return <span style={{ fontSize: 13, color: T2, lineHeight: 1.7 }}>{text}</span>;
+      const terms = [brand.name, ...competitors.map(c => c.name)].filter(Boolean);
+      if (!terms.length) return <span style={{ fontSize: 13, color: T2, lineHeight: 1.7 }}>{text}</span>;
+      const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      const regex = new RegExp(`(${escaped.join("|")})`, "gi");
+      const parts = text.split(regex);
+      return (
+        <span style={{ fontSize: 13, color: T2, lineHeight: 1.7 }}>
+          {parts.map((part, i) => {
+            if (part.toLowerCase() === brand.name.toLowerCase())
+              return <mark key={i} style={{ background: "#dcfce7", color: "#15803d", fontWeight: 700, borderRadius: 3, padding: "0 2px" }}>{part}</mark>;
+            if (competitors.some(c => c.name.toLowerCase() === part.toLowerCase()))
+              return <mark key={i} style={{ background: "#fef2f2", color: "#dc2626", fontWeight: 700, borderRadius: 3, padding: "0 2px" }}>{part}</mark>;
+            return <span key={i}>{part}</span>;
+          })}
+        </span>
+      );
+    };
+
+    const isLoading = platformLoading || realVisLoading;
+    const hasData   = realVisData !== null || platformDone;
+
+    if (isLoading && !hasData) return (
       <div style={{ textAlign: "center", padding: "72px 0" }}>
         <Spinner />
-        <p style={{ color: T3, marginTop: 16, fontSize: 14 }}>Analysing brand presence across Gemini, Grok, Claude & ChatGPT…</p>
+        <p style={{ color: T3, marginTop: 16, fontSize: 14 }}>Querying {realVisLoading ? "platforms with all your queries" : "online presence signals"}…</p>
       </div>
     );
 
-    if (!platformDone && !platformError) return (
+    if (!hasData && !platformError && !realVisError) return (
       <RunCTA
         icon={Eye} accentColor="#00FF96"
-        title="Per-Platform AI Visibility"
-        desc="See exactly how your brand appears on Gemini, Grok, Claude and ChatGPT — with share of voice, sentiment, and a plain-English explanation of why you scored that way."
-        label="Run Platform Visibility"
-        loading={platformLoading}
+        title="AI Visibility — Real Calculation"
+        desc={`Your ${queries.length} queries will be sent to every available AI platform. We count how many responses actually mention your brand. Visibility = brand_appeared ÷ total_queries. SoV = brand_mentions ÷ (brand + competitor mentions). No guessing.`}
+        label="Run AI Visibility Analysis"
+        loading={isLoading}
         onClick={runPlatformVisibility}
       />
     );
 
-    if (platformError) return (
+    if ((platformError || realVisError) && !hasData) return (
       <div style={{ textAlign: "center", padding: "48px 0" }}>
-        <div style={{ fontSize: 14, color: "#dc2626", marginBottom: 16 }}>⚠️ {platformError}</div>
-        <button onClick={runPlatformVisibility}
-          style={{ background: A, color: "#111", fontWeight: 700, padding: "10px 28px",
-            borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13 }}>
-          Retry
-        </button>
+        <div style={{ fontSize: 14, color: "#dc2626", marginBottom: 16 }}>⚠️ {platformError || realVisError}</div>
+        <button onClick={runPlatformVisibility} style={{ background: A, color: "#111", fontWeight: 700, padding: "10px 28px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13 }}>Retry</button>
       </div>
     );
 
-    const avgScore   = platformScores.length
-      ? Math.round(platformScores.reduce((s, p) => s + p.ai_visibility_score, 0) / platformScores.length) : 0;
-    const avgSoV     = platformScores.length
-      ? Math.round(platformScores.reduce((s, p) => s + p.share_of_voice, 0) / platformScores.length) : 0;
-
-    const scoreColor = (s: number) => s >= 70 ? "#15803d" : s >= 40 ? "#d97706" : "#dc2626";
-    const scoreBg    = (s: number) => s >= 70 ? "#dcfce7" : s >= 40 ? "#fef3c7" : "#fef2f2";
-    const sentimentColor = (s: string) => s === "positive" ? "#15803d" : s === "negative" ? "#dc2626" : "#d97706";
-    const sentimentBg    = (s: string) => s === "positive" ? "#dcfce7" : s === "negative" ? "#fef2f2" : "#fef3c7";
-    const platformEmoji: Record<string, string> = { Gemini: "🔵", Grok: "🤖", Claude: "🟣", ChatGPT: "🟢" };
-    const platformColor: Record<string, string> = { Gemini: "#1a73e8", Grok: "#000", Claude: "#7c3aed", ChatGPT: "#10a37f" };
+    const pColor: Record<string, string> = { Gemini: "#1a73e8", Grok: "#7c3aed", Claude: "#7e22ce", ChatGPT: "#10a37f" };
+    const pEmoji: Record<string, string> = { Gemini: "🔵", Grok: "🟣", Claude: "🟤", ChatGPT: "🟢" };
+    const visPct  = (n: number) => n >= 60 ? "#15803d" : n >= 30 ? "#d97706" : "#dc2626";
+    const visBg   = (n: number) => n >= 60 ? "#dcfce7" : n >= 30 ? "#fef3c7" : "#fef2f2";
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-        <ReRunBar label="Re-run Platform Visibility" loading={platformLoading} accentColor="#00FF96"
-          onClick={() => { setPlatformDone(false); setPlatformScores([]); runPlatformVisibility(); }} />
+        <ReRunBar label="Re-run AI Visibility" loading={isLoading} accentColor="#00FF96"
+          onClick={() => { setPlatformDone(false); setPlatformScores([]); setRealVisData(null); runPlatformVisibility(); }} />
 
-        {/* Honest disclaimer */}
-        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 14, padding: "14px 20px", fontSize: 12, color: "#92400e", lineHeight: 1.8 }}>
-          <strong style={{ fontSize: 13 }}>⚠️ Predicted scores — not live data</strong><br />
-          BrandEcho does not have API access to Grok or ChatGPT. All scores are <strong>Claude&apos;s predictions</strong> based on known platform signals.
-          No live queries are run against Grok, ChatGPT, or Gemini — treat these as directional estimates, not measured facts.<br />
-          <strong>AI Visibility Score formula:</strong>{" "}
-          <code style={{ background: "#fef3c7", padding: "1px 6px", borderRadius: 4, fontFamily: "monospace" }}>
-            Brand Authority (/25) + Content Signals (/25) + Social Proof (/25) + Platform Affinity (/25) = Total /100
-          </code><br />
-          <strong>Share of Voice formula:</strong>{" "}
-          <code style={{ background: "#fef3c7", padding: "1px 6px", borderRadius: 4, fontFamily: "monospace" }}>
-            SoV = brand_mentions ÷ (brand_mentions + competitor_mentions) × 100
-          </code>
+        {/* Real visibility KPIs */}
+        {realVisData && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+            {[
+              { label: "Avg AI Visibility", value: `${realVisData.avg_visibility_pct}%`, sub: "queries where brand appeared / total", color: visPct(realVisData.avg_visibility_pct), bg: visBg(realVisData.avg_visibility_pct) },
+              { label: "Avg Share of Voice", value: `${realVisData.avg_sov_pct}%`, sub: "brand mentions / (brand + competitor mentions)", color: visPct(realVisData.avg_sov_pct), bg: visBg(realVisData.avg_sov_pct) },
+              { label: "Platforms Queried", value: `${realVisData.platforms.filter(p => p.available).length} / 4`, sub: "active platforms with API keys", color: AT, bg: "#f0fdf4" },
+            ].map(({ label, value, sub, color, bg }) => (
+              <div key={label} style={{ background: bg, border: `1px solid ${color}30`, borderRadius: 16, padding: "20px 24px" }}>
+                <div style={{ fontSize: 36, fontWeight: 900, color, lineHeight: 1, marginBottom: 4 }}>{value}</div>
+                <div style={{ fontSize: 13, color, fontWeight: 700, marginBottom: 2 }}>{label}</div>
+                <div style={{ fontSize: 11, color }}>{sub}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Formula box */}
+        <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "12px 16px", fontSize: 12, color: "#166534", lineHeight: 1.8 }}>
+          <strong>AI Visibility %</strong> = queries where brand name appeared ÷ total queries sent × 100<br />
+          <code style={{ background: "#dcfce7", padding: "1px 6px", borderRadius: 4 }}>e.g. 4 of 15 = 27%</code>&nbsp;&nbsp;
+          <strong>Share of Voice %</strong> = brand mentions ÷ (brand + all competitor mentions) × 100<br />
+          <code style={{ background: "#dcfce7", padding: "1px 6px", borderRadius: 4 }}>e.g. 3 ÷ (3+17) = 15%</code>
+          &nbsp;&nbsp;Platforms without API keys show as unavailable. Add <code>XAI_API_KEY</code> for Grok, <code>OPENAI_API_KEY</code> for ChatGPT.
         </div>
 
-        {/* KPI summary bar */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
-          {[
-            { label: "Overall AI Visibility", value: `${avgScore}/100`, color: scoreColor(avgScore), bg: scoreBg(avgScore) },
-            { label: "Avg Share of Voice",    value: `${avgSoV}%`,      color: scoreColor(avgSoV),   bg: scoreBg(avgSoV) },
-            { label: "Platforms Analysed",    value: `${platformScores.length}`, color: AT, bg: "#f0fdf4" },
-          ].map(({ label, value, color, bg }) => (
-            <div key={label} style={{ background: bg, border: `1px solid ${color}30`, borderRadius: 16, padding: "20px 24px" }}>
-              <div style={{ fontSize: 32, fontWeight: 900, color, lineHeight: 1, marginBottom: 4 }}>{value}</div>
-              <div style={{ fontSize: 13, color, fontWeight: 600 }}>{label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Platform cards 2×2 grid */}
+        {/* Per-platform cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16 }}>
-          {platformScores.map(p => {
-            const open = expandedPlatform === p.platform;
-            const pColor = platformColor[p.platform] || "#6b7280";
+          {(realVisData?.platforms || [{ platform: "Claude", available: false, reason: "Loading…", logs: [], appeared_count: 0, total_queries: 0, visibility_pct: 0, total_brand_mentions: 0, total_competitor_mentions: 0, competitor_totals: {}, sov_pct: 0 }]).map(rp => {
+            const pc = pColor[rp.platform] || "#6b7280";
+            const onlineScore = platformScores.find(s => s.platform === rp.platform);
+            const cardOpen = expandedPlatform === rp.platform;
+            const logOpen  = expandedLog === rp.platform;
+
             return (
-              <div key={p.platform} style={{ background: BG, border: `2px solid ${open ? pColor : BORD}`,
-                borderRadius: 20, overflow: "hidden", transition: "border-color 0.2s" }}>
-
-                {/* Card top */}
-                <div style={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-                  {/* Header row */}
+              <div key={rp.platform} style={{ background: BG, border: `2px solid ${cardOpen || logOpen ? pc : BORD}`, borderRadius: 20, overflow: "hidden" }}>
+                {/* Card header */}
+                <div style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: `${pColor}15`,
-                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-                      {platformEmoji[p.platform] || "🤖"}
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: `${pc}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                      {pEmoji[rp.platform] || "🤖"}
                     </div>
-                    <span style={{ fontSize: 17, fontWeight: 800, color: T1 }}>{p.platform}</span>
-                    <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "4px 12px",
-                      borderRadius: 99, background: sentimentBg(p.sentiment), color: sentimentColor(p.sentiment),
-                      textTransform: "capitalize" }}>
-                      {p.sentiment}
-                    </span>
-                  </div>
-
-                  {/* Score + SoV side by side */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                    <div style={{ background: scoreBg(p.ai_visibility_score), borderRadius: 14, padding: "14px 18px" }}>
-                      <div style={{ fontSize: 36, fontWeight: 900, color: scoreColor(p.ai_visibility_score), lineHeight: 1 }}>
-                        {p.ai_visibility_score}
-                      </div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor(p.ai_visibility_score),
-                        textTransform: "uppercase", letterSpacing: "0.4px", marginTop: 4 }}>
-                        AI Visibility Score
-                      </div>
-                    </div>
-                    <div style={{ background: SURF, borderRadius: 14, padding: "14px 18px" }}>
-                      <div style={{ fontSize: 36, fontWeight: 900, color: T1, lineHeight: 1 }}>
-                        {p.share_of_voice}%
-                      </div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: T3,
-                        textTransform: "uppercase", letterSpacing: "0.4px", marginTop: 4 }}>
-                        Share of Voice
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* SoV bar */}
-                  <div>
-                    <div style={{ height: 8, borderRadius: 99, background: "#e5e7eb", overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${p.share_of_voice}%`,
-                        background: `linear-gradient(90deg, ${pColor}, ${pColor}99)`,
-                        borderRadius: 99, transition: "width 0.8s ease" }} />
-                    </div>
-                  </div>
-
-                  {/* Quick stats row */}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {p.mentions != null && (
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
-                        background: "#f3f4f6", color: T2 }}>
-                        ~{p.mentions} mentions
-                      </span>
-                    )}
-                    {p.avg_position != null && (
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
-                        background: "#f3f4f6", color: T2 }}>
-                        Avg position #{p.avg_position}
-                      </span>
-                    )}
-                    {p.has_citations != null && (
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
-                        background: p.has_citations ? "#dcfce7" : "#fef2f2",
-                        color: p.has_citations ? "#15803d" : "#dc2626" }}>
-                        {p.has_citations ? "✓ Citation links" : "✗ Name-drop only"}
+                    <span style={{ fontSize: 17, fontWeight: 800, color: T1 }}>{rp.platform}</span>
+                    {!rp.available && (
+                      <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99, background: "#f3f4f6", color: T3 }}>
+                        No API key
                       </span>
                     )}
                   </div>
+
+                  {rp.available ? (
+                    <>
+                      {/* Real visibility + SoV */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div style={{ background: visBg(rp.visibility_pct), borderRadius: 12, padding: "12px 16px" }}>
+                          <div style={{ fontSize: 30, fontWeight: 900, color: visPct(rp.visibility_pct), lineHeight: 1 }}>{rp.visibility_pct}%</div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: visPct(rp.visibility_pct), textTransform: "uppercase", marginTop: 3 }}>AI Visibility</div>
+                          <div style={{ fontSize: 11, color: visPct(rp.visibility_pct), marginTop: 2 }}>{rp.appeared_count} of {rp.total_queries} queries</div>
+                        </div>
+                        <div style={{ background: visBg(rp.sov_pct), borderRadius: 12, padding: "12px 16px" }}>
+                          <div style={{ fontSize: 30, fontWeight: 900, color: visPct(rp.sov_pct), lineHeight: 1 }}>{rp.sov_pct}%</div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: visPct(rp.sov_pct), textTransform: "uppercase", marginTop: 3 }}>Share of Voice</div>
+                          <div style={{ fontSize: 11, color: visPct(rp.sov_pct), marginTop: 2 }}>{rp.total_brand_mentions} brand vs {rp.total_competitor_mentions} competitor mentions</div>
+                        </div>
+                      </div>
+
+                      {/* SoV bar */}
+                      <div style={{ height: 6, borderRadius: 99, background: BORD, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${rp.sov_pct}%`, background: pc, borderRadius: 99 }} />
+                      </div>
+
+                      {/* Competitor breakdown */}
+                      {Object.keys(rp.competitor_totals).length > 0 && (
+                        <div style={{ fontSize: 11, color: T3 }}>
+                          <strong style={{ color: T2 }}>SoV: </strong>
+                          {rp.total_brand_mentions} ÷ ({rp.total_brand_mentions} + {rp.total_competitor_mentions}) × 100 = {rp.sov_pct}%
+                          <div style={{ marginTop: 3 }}>
+                            {Object.entries(rp.competitor_totals).map(([c, n]) => (
+                              <span key={c} style={{ marginRight: 6, fontSize: 10, background: "#fef2f2", color: "#dc2626", padding: "1px 6px", borderRadius: 99, fontWeight: 600 }}>{c}: {n}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Online Score (estimated) — secondary */}
+                      {onlineScore && (
+                        <div style={{ background: "#f9fafb", border: `1px solid ${BORD}`, borderRadius: 10, padding: "10px 14px" }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 6 }}>
+                            Online Presence Score (estimated)
+                          </div>
+                          <button onClick={() => setExpandedPlatform(cardOpen ? null : rp.platform)}
+                            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                            <span style={{ fontSize: 18, fontWeight: 800, color: T1 }}>{onlineScore.ai_visibility_score}/100</span>
+                            <span style={{ fontSize: 11, color: T3 }}>
+                              {cardOpen ? "▲ hide breakdown" : "▼ show breakdown"}
+                            </span>
+                          </button>
+                          {cardOpen && onlineScore.score_breakdown && (() => {
+                            const bd = onlineScore.score_breakdown!;
+                            const sigs = [
+                              { k: "Brand Authority",   s: bd.brand_authority },
+                              { k: "Content Signals",   s: bd.content_signals },
+                              { k: "Social Proof",      s: bd.social_proof },
+                              { k: "Platform Affinity", s: bd.platform_affinity },
+                            ];
+                            return (
+                              <div style={{ marginTop: 10 }}>
+                                <div style={{ fontSize: 10, color: T3, marginBottom: 6 }}>
+                                  {sigs.map(x => x.s.score).join(" + ")} = {sigs.reduce((a, x) => a + x.s.score, 0)}/100
+                                </div>
+                                {sigs.map(({ k, s }) => (
+                                  <div key={k} style={{ display: "grid", gridTemplateColumns: "130px 38px 1fr", gap: 8, padding: "5px 0", borderTop: `1px solid ${BORD}` }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: T1 }}>{k}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 800, color: s.score >= 20 ? "#15803d" : s.score >= 12 ? "#d97706" : "#dc2626" }}>{s.score}/25</span>
+                                    <span style={{ fontSize: 10, color: T3 }}>{s.note}</span>
+                                  </div>
+                                ))}
+                                {onlineScore.insight && (
+                                  <div style={{ marginTop: 8, fontSize: 11, color: T2, background: `${pc}08`, borderLeft: `3px solid ${pc}`, padding: "6px 10px", borderRadius: 6 }}>
+                                    💡 {onlineScore.insight}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 12, color: T3, lineHeight: 1.6 }}>{rp.reason}</div>
+                  )}
                 </div>
 
-                {/* "Why this score?" toggle */}
-                <button onClick={() => setExpandedPlatform(open ? null : p.platform)}
-                  style={{ width: "100%", padding: "12px 24px", background: `${pColor}08`,
-                    borderTop: `1px solid ${BORD}`, border: "none", cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    fontSize: 12, fontWeight: 700, color: pColor }}>
-                  Why this score?
-                  {open ? <ChevronUp style={{ width: 14, height: 14 }} /> : <ChevronDown style={{ width: 14, height: 14 }} />}
-                </button>
+                {/* Query Log toggle */}
+                {rp.available && rp.logs.length > 0 && (
+                  <>
+                    <button onClick={() => setExpandedLog(logOpen ? null : rp.platform)}
+                      style={{ width: "100%", padding: "10px 22px", background: `${pc}08`,
+                        borderTop: `1px solid ${BORD}`, border: "none", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        fontSize: 12, fontWeight: 700, color: pc }}>
+                      View Query Log ({rp.logs.length} queries)
+                      {logOpen ? <ChevronUp style={{ width: 14, height: 14 }} /> : <ChevronDown style={{ width: 14, height: 14 }} />}
+                    </button>
 
-                {open && (
-                  <div style={{ padding: "16px 24px", borderTop: `1px solid ${BORD}`,
-                    background: `${pColor}06`, display: "flex", flexDirection: "column", gap: 14 }}>
-
-                    {/* Score breakdown formula */}
-                    {p.score_breakdown && (() => {
-                      const bd = p.score_breakdown;
-                      const signals = [
-                        { key: "Brand Authority",    s: bd.brand_authority },
-                        { key: "Content Signals",    s: bd.content_signals },
-                        { key: "Social Proof",       s: bd.social_proof },
-                        { key: "Platform Affinity",  s: bd.platform_affinity },
-                      ];
-                      const total = signals.reduce((sum, x) => sum + x.s.score, 0);
-                      return (
-                        <div style={{ background: BG, border: `1px solid ${BORD}`, borderRadius: 12, overflow: "hidden" }}>
-                          <div style={{ padding: "8px 14px", background: "#f3f4f6", fontSize: 10, fontWeight: 700,
-                            color: T3, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                            Score Breakdown — {signals.map(x => `${x.s.score}`).join(" + ")} = {total}/100
-                          </div>
-                          {signals.map(({ key, s }) => (
-                            <div key={key} style={{ padding: "10px 14px", borderTop: `1px solid ${BORD}`,
-                              display: "grid", gridTemplateColumns: "150px 48px 1fr", alignItems: "center", gap: 12 }}>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: T1 }}>{key}</span>
-                              <span style={{ fontSize: 14, fontWeight: 800,
-                                color: s.score >= 20 ? "#15803d" : s.score >= 12 ? "#d97706" : "#dc2626" }}>
-                                {s.score}/25
+                    {logOpen && (
+                      <div style={{ borderTop: `1px solid ${BORD}`, maxHeight: 520, overflowY: "auto" }}>
+                        {/* Log legend */}
+                        <div style={{ padding: "8px 16px", background: "#f9fafb", borderBottom: `1px solid ${BORD}`, display: "flex", gap: 12, fontSize: 11 }}>
+                          <span><mark style={{ background: "#dcfce7", color: "#15803d", fontWeight: 700, padding: "0 4px", borderRadius: 3 }}>Brand</mark> = your brand</span>
+                          <span><mark style={{ background: "#fef2f2", color: "#dc2626", fontWeight: 700, padding: "0 4px", borderRadius: 3 }}>Competitor</mark> = competitor mention</span>
+                        </div>
+                        {rp.logs.map((log, li) => (
+                          <div key={log.query_id} style={{ padding: "12px 16px", borderTop: li > 0 ? `1px solid ${BORD}` : "none",
+                            background: log.brand_mentioned ? "#fafffc" : "#fffafa" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 6 }}>
+                              <span style={{ width: 20, height: 20, borderRadius: 6, background: log.brand_mentioned ? "#dcfce7" : "#fef2f2",
+                                color: log.brand_mentioned ? "#15803d" : "#dc2626", fontWeight: 800, fontSize: 11,
+                                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                {li + 1}
                               </span>
-                              <span style={{ fontSize: 11, color: T3, lineHeight: 1.5 }}>{s.note}</span>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: T1, marginBottom: 4 }}>{log.query_text}</div>
+                                <div style={{ fontSize: 12 }}>{highlight(log.answer)}</div>
+                                {log.brand_mentioned && (
+                                  <span style={{ display: "inline-block", marginTop: 5, fontSize: 10, fontWeight: 700, background: "#dcfce7", color: "#15803d", padding: "1px 7px", borderRadius: 99 }}>
+                                    ✓ Brand mentioned ×{log.brand_mention_count}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-
-                    {/* SoV formula */}
-                    {p.sov_formula && (
-                      <div style={{ background: BG, border: `1px solid ${BORD}`, borderRadius: 12, padding: "10px 14px" }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: T3, textTransform: "uppercase",
-                          letterSpacing: "0.5px", marginBottom: 6 }}>Share of Voice Calculation</div>
-                        <code style={{ fontSize: 12, color: T1, display: "block", marginBottom: 4 }}>
-                          SoV = {p.sov_formula.brand_mentions} ÷ ({p.sov_formula.brand_mentions} + {p.sov_formula.total_competitor_mentions}) × 100 = {p.share_of_voice}%
-                        </code>
-                        {p.sov_formula.competitor_breakdown && (
-                          <div style={{ fontSize: 11, color: T3, marginTop: 4 }}>
-                            Competitors: {p.sov_formula.competitor_breakdown}
                           </div>
-                        )}
+                        ))}
                       </div>
                     )}
-
-                    {/* Reasoning */}
-                    <div style={{ fontSize: 13, color: T2, lineHeight: 1.7 }}>
-                      <strong style={{ color: T1 }}>Analysis: </strong>{p.reasoning}
-                    </div>
-
-                    {/* Actionable insight */}
-                    {p.insight && (
-                      <div style={{ background: BG, border: `1px solid ${pColor}30`, borderLeft: `3px solid ${pColor}`,
-                        borderRadius: 10, padding: "10px 14px", fontSize: 12, color: T2, lineHeight: 1.6 }}>
-                        💡 <strong>Action: </strong>{p.insight}
-                      </div>
-                    )}
-
-                    {/* Quick stats */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      {[
-                        { label: "Est. mentions / query", value: p.mentions != null ? `~${p.mentions}` : "—" },
-                        { label: "Answer position",        value: p.avg_position != null ? `#${p.avg_position} of 5` : "—" },
-                        { label: "Citation type",          value: p.has_citations ? "Linked citation" : "Name-drop only" },
-                        { label: "Sentiment",              value: p.sentiment ? p.sentiment.charAt(0).toUpperCase() + p.sentiment.slice(1) : "—" },
-                      ].map(({ label, value }) => (
-                        <div key={label} style={{ background: BG, border: `1px solid ${BORD}`, borderRadius: 10, padding: "10px 14px" }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: T3, textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>{label}</div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: T1 }}>{value}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  </>
                 )}
               </div>
             );
