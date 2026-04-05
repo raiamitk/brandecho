@@ -231,12 +231,21 @@ export default function DashboardPage() {
   const [expandedBrief,   setExpandedBrief]   = useState<string | null>(null);
   const [expandedQueryId, setExpandedQueryId] = useState<string | null>(null);
   const [copiedId,        setCopiedId]        = useState<string | null>(null);
+  const [hasAutoRunVis,   setHasAutoRunVis]   = useState(false);
 
   useEffect(() => {
     const brandId = sessionStorage.getItem("brand_id");
     if (!brandId) { router.push("/"); return; }
     loadData(brandId);
   }, []);
+
+  useEffect(() => {
+    if (brand && queries.length > 0 && !hasAutoRunVis) {
+      setHasAutoRunVis(true);
+      runPlatformVisibility();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brand, queries, hasAutoRunVis]);
 
   const loadData = async (brandId: string) => {
     try {
