@@ -99,10 +99,17 @@ async function queryGemini(prompt: string, apiKey: string): Promise<string | nul
       }),
       signal: AbortSignal.timeout(35000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+        const errText = await res.text();
+        console.error(`Gemini queryGemini Error (${res.status}):`, errText);
+        return null;
+    }
     const data = await res.json();
     return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
-  } catch { return null; }
+  } catch (error) {
+    console.error("Gemini queryGemini Exception:", error);
+    return null;
+  }
 }
 
 async function queryGrok(prompt: string, apiKey: string): Promise<string | null> {

@@ -28,8 +28,13 @@ async function tryGeminiCheck(queryLines: string, apiKey: string): Promise<strin
         const data = await res.json();
         return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
       }
+      const errText = await res.text();
+      console.error(`Gemini tryGeminiCheck Error (${res.status}):`, errText);
       if (res.status !== 429) return null; // non-retryable
-    } catch { return null; }
+    } catch (error) {
+      console.error("Gemini tryGeminiCheck Exception:", error);
+      return null;
+    }
   }
   return null; // exhausted retries
 }
@@ -118,28 +123,31 @@ export async function POST(req: NextRequest) {
 
     // ── Step 3: Build combined results ────────────────────────────────────────
     const results = queries.map((q: { id: string; text: string; type: string; revenue_proximity: number }) => {
-      const claude     = claudeScores[q.id] || { claude_score: 0, web_score: 0, reason: "" };
-      const aiCheck    = aiCheckResults[q.id];
-      const aiScore    = aiCheck?.available ? aiCheck.score : -1;
+      const p        = claudeScores[q.id] || { claude_score: 0, grok_score: 0, gemini_score: 0, chatgpt_score: 0, web_score: 0, reason: "" };
+      const aiCheck  = aiCheckResults[q.id];
+      const liveScore = aiCheck?.available ? aiCheck.score : -1;
 
-      // Combined: 50% Claude + 30% web + 20% live AI check (if available)
-      const combined = aiScore >= 0
-        ? Math.round(claude.claude_score * 0.5 + claude.web_score * 0.3 + aiScore * 0.2)
-        : Math.round(claude.claude_score * 0.6 + claude.web_score * 0.4);
+      // Combined: avg of 4 platform scores (40%) + web (20%) + live check if available (20%) else redistribute
+      const platformAvg = Math.round((p.claude_score + p.grok_score + p.gemini_score + p.chatgpt_score) / 4);
+      const combined = liveScore >= 0
+        ? Math.round(platformAvg * 0.6 + p.web_score * 0.2 + liveScore * 0.2)
+        : Math.round(platformAvg * 0.7 + p.web_score * 0.3);
 
       return {
-        query_id:         q.id,
-        query_text:       q.text,
-        query_type:       q.type,
+        query_id:          q.id,
+        query_text:        q.text,
+        query_type:        q.type,
         revenue_proximity: q.revenue_proximity,
-        claude_score:     claude.claude_score,
-        web_score:        claude.web_score,
-        gemini_check:     aiCheck?.mentioned || false,
-        gemini_score:     aiScore,
-        gemini_excerpt:   aiCheck?.excerpt || "",
-        gemini_available: aiCheck?.available || false,
-        combined_score:   combined,
-        reason:           claude.reason,
+        claude_score:      p.claude_score,
+        grok_score:        p.grok_score,
+        gemini_score:      p.gemini_score,
+        chatgpt_score:     p.chatgpt_score,
+        web_score:         p.web_score,
+        live_mentioned:    aiCheck?.mentioned || false,
+        live_available:    aiCheck?.available || false,
+        live_excerpt:      aiCheck?.excerpt || "",
+        combined_score:    combined,
+        reason:            p.reason,
       };
     });
 
@@ -148,7 +156,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       brand_name:       brand.name,
       overall_score:    avg,
-      gemini_available: Object.values(aiCheckResults).some(r => r.available),
+      live_available:   Object.values(aiCheckResults).some(r => r.available),
       ai_check_source:  aiCheckSource,
       results,
     });
