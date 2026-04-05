@@ -20,7 +20,9 @@ function deriveBrandName(url: string): string {
     const raw      = url.startsWith("http") ? url : `https://${url}`;
     const parsed   = new URL(raw);
     const hostname = parsed.hostname.replace(/^www\./, "");
-    const segments = parsed.pathname.split("/").filter(Boolean);
+    const segments = parsed.pathname.split("/").filter(Boolean).map(s => {
+      try { return decodeURIComponent(s); } catch { return s; }
+    });
 
     // If path has a known category prefix followed by a name, use that name
     for (let i = 0; i < segments.length - 1; i++) {
@@ -32,9 +34,11 @@ function deriveBrandName(url: string): string {
 
     // Fall back to first meaningful hostname segment
     const part = hostname.split(".")[0].replace(/-/g, " ");
-    return part.replace(/\b\w/g, c => c.toUpperCase());
+    try { return decodeURIComponent(part).replace(/\b\w/g, c => c.toUpperCase()); }
+    catch { return part.replace(/\b\w/g, c => c.toUpperCase()); }
   } catch {
-    return url.replace(/https?:\/\/(www\.)?/, "").split(".")[0] || url;
+    try { return decodeURIComponent(url.replace(/https?:\/\/(www\.)?/, "").split(".")[0] || url); }
+    catch { return url.replace(/https?:\/\/(www\.)?/, "").split(".")[0] || url; }
   }
 }
 
