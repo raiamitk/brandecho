@@ -8,6 +8,7 @@ export interface Brand {
   domain: string;
   industry: string;
   description: string;
+  brand_tone?: string;
   created_at: string;
 }
 

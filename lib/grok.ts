@@ -130,13 +130,13 @@ export async function discoverPartA(brandName: string, domain?: string, geo?: { 
       messages: [{
         role: "user",
         content: `Analyse brand "${brandName}"${domain ? ` (website: ${domain})` : ""}
-Geo context: ${geoCtx}
+Searcher location: ${geoCtx} — IMPORTANT: if the brand is global/international, list its REAL global competitors regardless of searcher location. Only use local competitors if the brand exclusively serves that local market.
 Return:
 {
   "brand": {
     "domain": "official domain",
     "industry": "specific industry (e.g. Quick Commerce, Online Brokerage)",
-    "description": "2-sentence brand description",
+    "description": "2-sentence brand description covering what it does and who it serves",
     "brand_tone": "professional|casual|luxury|budget"
   },
   "competitors": [
@@ -179,7 +179,7 @@ export async function discoverPartB(brandName: string, domain?: string, geo?: { 
       messages: [{
         role: "user",
         content: `For brand "${brandName}"${domain ? ` (website: ${domain})` : ""}, generate 3 buyer personas with queries.
-Geo: ${geo?.city ? `${geo.city}, ` : ""}${geo?.country || "India"}
+Searcher location: ${geo?.city ? `${geo.city}, ` : ""}${geo?.country || "India"} — if the brand is global/international, personas should reflect its ACTUAL global user base. Only localise personas if the brand exclusively serves that country.
 Return JSON:
 {
   "personas": [
@@ -327,14 +327,14 @@ export async function scoreQueryVisibility(
   industry: string,
   queries: { id: string; text: string; type: string }[],
   description?: string
-): Promise<Record<string, { claude_score: number; web_score: number; reason: string }>> {
+): Promise<Record<string, { claude_score: number; grok_score: number; gemini_score: number; chatgpt_score: number; web_score: number; reason: string }>> {
   const queryList = queries.map((q, i) => `${i + 1}. [${q.id}] ${q.text}`).join("\n");
   const brandContext = description ? `\nBrand context: ${description}` : "";
   const raw = await claudeChat(
     "You are an AEO (AI Engine Optimization) expert. Always return valid JSON only. No markdown.",
     `Brand: "${brandName}" | Industry: "${industry}"${brandContext}
 
-For each query, score how likely "${brandName}" is to be mentioned by AI engines (ChatGPT, Perplexity, Gemini).
+For each query, score how likely "${brandName}" is to be cited by each AI platform.
 
 Queries:
 ${queryList}
@@ -343,19 +343,54 @@ Return JSON object keyed by query ID:
 {
   "uuid-here": {
     "claude_score": 0-100,
+    "grok_score": 0-100,
+    "gemini_score": 0-100,
+    "chatgpt_score": 0-100,
     "web_score": 0-100,
-    "reason": "one sentence why"
+    "reason": "one sentence covering the key factor"
   }
 }
 
-Scoring guide — be ACCURATE, not pessimistic:
-- For queries directly about the brand's core product/service category: score 50-80 if the brand is established
-- For queries where the brand is a category leader or well-known: score 65-90
-- For queries outside the brand's core strength: score 20-50
-- For highly generic queries with many competitors: score 30-60
-- claude_score: likelihood AI engines cite this brand (factor in brand's market position and relevance)
-- web_score: brand's web authority for this query (reviews, directories, press coverage)
-- A known brand in its own industry should score 40-70 for relevant queries. Reserve sub-30 scores only for completely irrelevant queries.`
+Platform scoring notes:
+- claude_score: Claude tends to cite structured, well-documented brands with clear expertise signals
+- grok_score: Grok (X/Twitter) weights real-time mentions and social proof heavily
+- gemini_score: Gemini favours Google-indexed content, strong Search presence, and reviews
+- chatgpt_score: ChatGPT weights training data density, Wikipedia presence, and established brands
+- web_score: overall web authority (reviews, directories, press) — same for all platforms
+- Established brand in its own category: 45-75. Category leader: 65-85. Niche/new: 25-55.
+- Vary scores across platforms meaningfully — each has different ranking signals.`
+  );
+  return JSON.parse(raw);
+}
+
+export async function generateMoreQueries(
+  brandName: string,
+  industry: string,
+  existingTexts: string[],
+  funnelFilter: "ALL" | "TOFU" | "MOFU" | "BOFU",
+  geo?: { country: string; city?: string }
+): Promise<{ text: string; type: string; intent: string; revenue_proximity: number; funnel_stage: string }[]> {
+  const geoCtx = geo?.city ? `${geo.city}, ${geo.country}` : (geo?.country || "India");
+  const stageRule = funnelFilter === "TOFU" ? "All 10 must be TOFU (awareness, rev_prox 20-49)"
+    : funnelFilter === "MOFU" ? "All 10 must be MOFU (consideration, rev_prox 50-79)"
+    : funnelFilter === "BOFU" ? "All 10 must be BOFU (purchase/decision, rev_prox 80-100)"
+    : "Mix: 4 TOFU + 3 MOFU + 3 BOFU";
+  const avoid = existingTexts.slice(0, 15).map((t, i) => `${i+1}. ${t}`).join("\n");
+  const raw = await claudeChat(
+    "You are an AEO query research expert. Return ONLY valid JSON. No markdown.",
+    `Brand: "${brandName}" | Industry: "${industry}" | Geo: ${geoCtx}
+
+Generate 10 NEW queries that are different from the ones below.
+${stageRule}
+
+Already have (do NOT repeat these):
+${avoid}
+
+Return JSON array:
+[{"text":"conversational question typed into ChatGPT — NO brand name","type":"aeo","intent":"awareness","revenue_proximity":30,"funnel_stage":"TOFU"}]
+
+Rules: conversational AEO/GEO style questions only. No brand name in text.`,
+    1200
   );
   return JSON.parse(raw);
 }

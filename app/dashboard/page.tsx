@@ -557,8 +557,45 @@ export default function DashboardPage() {
   // ── Tab renders ────────────────────────────────────────────────────────────
 
   // SCAN TAB ─────────────────────────────────────────────────────────────────
-  const ScanTab = () => (
+  const ScanTab = () => {
+    const stored = (() => { try { return JSON.parse(localStorage.getItem("brandecho_analysis") || "{}"); } catch { return {}; } })();
+    const geo = [stored.city, stored.country].filter(Boolean).join(", ");
+    return (
     <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+
+      {/* Brand summary card */}
+      {brand && (
+        <div style={{ background: SURF, border: `1px solid ${BORD}`, borderRadius: 18, padding: "20px 24px",
+          display: "flex", alignItems: "flex-start", gap: 20 }}>
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: `${A}18`, border: `1px solid ${A}40`,
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Globe style={{ width: 22, height: 22, color: AT }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 17, fontWeight: 800, color: T1 }}>{brand.name}</span>
+              {brand.industry && (
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99,
+                  background: `${A}20`, color: AT, border: `1px solid ${A}40` }}>{brand.industry}</span>
+              )}
+              {brand.brand_tone && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 99,
+                  background: "#f3f4f6", color: T3 }}>{brand.brand_tone}</span>
+              )}
+            </div>
+            {brand.description && (
+              <p style={{ fontSize: 13, color: T2, lineHeight: 1.65, margin: 0 }}>{brand.description}</p>
+            )}
+          </div>
+          {geo && (
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5,
+              fontSize: 12, color: T3, background: "#f3f4f6", padding: "5px 12px", borderRadius: 99 }}>
+              📍 {geo}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* KPIs */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
         {[
@@ -831,7 +868,8 @@ export default function DashboardPage() {
         <FileText style={{ width: 16, height: 16 }} /> Download Full Scan Report (PDF)
       </button>
     </div>
-  );
+    );
+  };
 
   // PLATFORM VISIBILITY TAB ─────────────────────────────────────────────────
   const PlatformTab = () => {
