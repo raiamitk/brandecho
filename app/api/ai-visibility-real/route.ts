@@ -35,10 +35,35 @@ function parseAnswerArray(text: string, count: number): { index: number; answer:
   return Array.from({ length: count }, (_, i) => ({ index: i + 1, answer: "" }));
 }
 
+function buildNameVariants(name: string): string[] {
+  const variants = new Set<string>([name]);
+  // "Socialmediacheck" → "Social Media Check"
+  const spaced = name.replace(/([a-z])([A-Z])/g, "$1 $2")  // camelCase split
+                     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+  variants.add(spaced);
+  // domain-style: remove spaces
+  variants.add(name.replace(/\s+/g, ""));
+  // also try inserting spaces before capital letters in all-lower names
+  variants.add(name.replace(/([a-z])([a-z]+)/g, (_, a, b) => a.toUpperCase() + b));
+  return Array.from(variants).filter(v => v.length > 2);
+}
+
 function countMentions(text: string, name: string): number {
   if (!text || !name) return 0;
-  const pattern = new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-  return (text.match(pattern) || []).length;
+  const variants = buildNameVariants(name);
+  let total = 0;
+  for (const v of variants) {
+    const pattern = new RegExp(v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    total += (text.match(pattern) || []).length;
+  }
+  // Deduplicate: if a longer variant matched, shorter sub-matches would double-count.
+  // Simple approach: just take the max across variants to avoid double counting.
+  let max = 0;
+  for (const v of variants) {
+    const pattern = new RegExp(v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    max = Math.max(max, (text.match(pattern) || []).length);
+  }
+  return max;
 }
 
 async function queryClaude(prompt: string): Promise<string | null> {
@@ -127,7 +152,7 @@ function buildResult(
   if (noKey) {
     return {
       platform, available: false,
-      reason: `No API key configured for ${platform}. Add ${platform === "Grok" ? "XAI_API_KEY" : "OPENAI_API_KEY"} to enable.`,
+      reason: `No API key configured for ${platform}. Add ${platform === "Grok" ? "GROK_API_KEY" : "OPENAI_API_KEY"} to enable.`,
       logs: [], appeared_count: 0, total_queries: queries.length,
       visibility_pct: 0, total_brand_mentions: 0,
       total_competitor_mentions: 0, competitor_totals: {} as Record<string, number>, sov_pct: 0,
@@ -176,9 +201,10 @@ export async function POST(req: NextRequest) {
     const competitorNames: string[] = Array.isArray(competitors) ? competitors : [];
     const prompt = buildBatchPrompt(queries);
 
-    const geminiKey = process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY" ? process.env.GEMINI_API_KEY : null;
-    const grokKey   = process.env.XAI_API_KEY    && process.env.XAI_API_KEY    !== "YOUR_XAI_API_KEY"    ? process.env.XAI_API_KEY    : null;
-    const openaiKey = process.env.OPENAI_API_KEY  && process.env.OPENAI_API_KEY  !== "YOUR_OPENAI_API_KEY"  ? process.env.OPENAI_API_KEY  : null;
+    const geminiKey = process.env.GEMINI_API_KEY || null;
+    // Vercel env var is GROK_API_KEY (also check XAI_API_KEY as fallback)
+    const grokKey   = process.env.GROK_API_KEY || process.env.XAI_API_KEY || null;
+    const openaiKey = process.env.OPENAI_API_KEY || null;
 
     // Query all available platforms in parallel
     const [claudeText, geminiText, grokText, chatgptText] = await Promise.all([

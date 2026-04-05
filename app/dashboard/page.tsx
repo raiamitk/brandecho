@@ -1092,7 +1092,7 @@ export default function DashboardPage() {
           <code style={{ background: "#dcfce7", padding: "1px 6px", borderRadius: 4 }}>e.g. 4 of 15 = 27%</code>&nbsp;&nbsp;
           <strong>Share of Voice %</strong> = brand mentions ÷ (brand + all competitor mentions) × 100<br />
           <code style={{ background: "#dcfce7", padding: "1px 6px", borderRadius: 4 }}>e.g. 3 ÷ (3+17) = 15%</code>
-          &nbsp;&nbsp;Platforms without API keys show as unavailable. Add <code>XAI_API_KEY</code> for Grok, <code>OPENAI_API_KEY</code> for ChatGPT.
+          &nbsp;&nbsp;Platforms without API keys show as unavailable. Add <code>GROK_API_KEY</code> for Grok, <code>OPENAI_API_KEY</code> for ChatGPT.
         </div>
 
         {/* Per-platform cards */}
